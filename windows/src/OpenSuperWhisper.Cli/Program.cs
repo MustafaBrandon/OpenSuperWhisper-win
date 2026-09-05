@@ -47,6 +47,8 @@ internal static class Program
                 return RecordCommand.ListDevices(verbose);
             case "record":
                 return RecordCommand.Record(args, modelPath, vadPath, verbose);
+            case "listen":
+                return ListenCommand.Run(args, modelPath, vadPath, verbose);
         }
 
         var audioPath = args[0];
@@ -139,6 +141,7 @@ internal static class Program
             usage:
               osw <audio-file>          transcribe a file
               osw record [options]      record from the microphone, then transcribe
+              osw listen [options]      global hotkey dictation loop
               osw devices               list audio input devices
 
             options:
@@ -155,6 +158,14 @@ internal static class Program
                                    system default capture device
               --seconds <n>        record for n seconds; default is until ENTER
               --keep               keep the captured wav instead of deleting it
+
+            listen options:
+              --trigger <name>     rightalt (default), leftalt, leftctrl, rightctrl,
+                                   leftshift, rightshift, leftwin, rightwin,
+                                   middle, button4, button5
+              --toggle             press to start, press again to stop
+                                   (default is hold to record, release to stop)
+              --double-tap         require a double tap to start recording
 
             Any format Media Foundation can read is accepted for file input - wav,
             mp3, m4a, wma, flac - and is resampled to 16 kHz mono automatically.

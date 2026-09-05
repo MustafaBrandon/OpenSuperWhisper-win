@@ -638,7 +638,26 @@ Low-level keyboard and mouse hooks on a dedicated pump thread. All three trigger
 precedence, hold-to-record, double-tap, Escape.
 
 > **Exit** — Every trigger mode drives start and stop correctly; the hook survives lock/unlock and a
-> starved callback.
+> starved callback. **Partially met — see below.**
+
+Verified automatically: the state machine's every branch (24 unit tests covering hold, toggle,
+double tap, and the stopping-press bug), that the hook installs and delivers real events end to end,
+that synthesised input is flagged injected, and that four consecutive rebinds tear down and
+reinstall without deadlocking.
+
+**The join between them cannot be self-tested.** `SendInput` always marks events injected, and the
+coordinator deliberately drops injected events so the app cannot trigger itself with its own paste
+keystrokes. That defence is correct and worth keeping — but it means no synthesised press can ever
+drive the trigger. Only a human pressing a real key exercises hook → coordinator → recording. Run
+`osw listen` and hold right Alt.
+
+**Lock/unlock recovery is unverified.** Windows gives no "your hook was removed" signal, so there is
+nothing to react to. The mitigation is a watchdog that reinstalls every 30 s, bounding how long a
+silently-dead hook stays dead; the reinstall path is tested, the lock/unlock scenario is not. On the
+Tier 4 matrix.
+
+The real defence against the timeout is structural: the hook callback pushes onto a lock-free queue
+and returns, with no allocation, logging, locks or user code on that path.
 
 ### M4 · Text injection
 
