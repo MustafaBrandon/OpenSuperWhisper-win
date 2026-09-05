@@ -1,0 +1,32 @@
+#!/bin/sh
+# Stop, rebuild, and relaunch the desktop app.
+#
+#   ./windows/run-app                 normal launch
+#   ./windows/run-app --paste-target  also open the diagnostic paste target
+#
+# The stop step is not optional: a running instance holds its DLLs open and the
+# build fails with "file is being used by another process".
+
+set -e
+
+here="$(cd "$(dirname "$0")" && pwd)"
+tfm="net10.0-windows10.0.22000.0"
+exe="$here/src/OpenSuperWhisper.App/bin/Release/$tfm/win-x64/OpenSuperWhisper.exe"
+
+echo "stopping any running instance..."
+powershell -NoProfile -Command "Get-Process OpenSuperWhisper -ErrorAction SilentlyContinue | Stop-Process -Force" || true
+sleep 1
+
+echo "building..."
+dotnet build "$here/OpenSuperWhisper.slnx" -c Release --nologo -v:q
+
+echo "starting..."
+# Detach fully. Without redirecting its streams the app inherits this shell's
+# stdout, and the terminal appears to hang until the app exits.
+"$exe" "$@" </dev/null >/dev/null 2>&1 &
+disown 2>/dev/null || true
+
+echo
+echo "log: $LOCALAPPDATA\\OpenSuperWhisper\\log.txt"
+echo "quit: right-click the tray icon (behind the ^ chevron), or run:"
+echo "  powershell -c \"Get-Process OpenSuperWhisper | Stop-Process -Force\""
