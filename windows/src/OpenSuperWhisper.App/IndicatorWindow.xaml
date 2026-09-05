@@ -1,0 +1,54 @@
+<Window x:Class="OpenSuperWhisper.App.IndicatorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Topmost="True"
+        SizeToContent="WidthAndHeight"
+        ResizeMode="NoResize"
+        Focusable="False"
+        IsHitTestVisible="False">
+
+    <!--
+        The card. Sized to content so a longer status string does not clip, with a
+        minimum width so the common states do not jitter between sizes.
+    -->
+    <Border x:Name="Card"
+            MinWidth="180"
+            CornerRadius="10"
+            Padding="14,10"
+            Background="#F21C1C1E"
+            BorderBrush="#33FFFFFF"
+            BorderThickness="1">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.45" Color="Black" />
+        </Border.Effect>
+
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+            <!-- Status dot. Pulses only while recording. -->
+            <Ellipse x:Name="StatusDot"
+                     Width="10" Height="10"
+                     Margin="0,0,10,0"
+                     VerticalAlignment="Center"
+                     Fill="#FF3B30" />
+
+            <TextBlock x:Name="StatusText"
+                       Text="Recording"
+                       Foreground="#FFFFFFFF"
+                       FontSize="13"
+                       FontFamily="Segoe UI"
+                       VerticalAlignment="Center" />
+
+            <TextBlock x:Name="ElapsedText"
+                       Text=""
+                       Foreground="#99FFFFFF"
+                       FontSize="12"
+                       FontFamily="Consolas"
+                       Margin="10,0,0,0"
+                       VerticalAlignment="Center" />
+        </StackPanel>
+    </Border>
+</Window>

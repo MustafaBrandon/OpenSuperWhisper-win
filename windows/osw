@@ -1,0 +1,25 @@
+#!/bin/sh
+# Dev shim for POSIX shells (Git Bash, WSL-on-Windows paths).
+#
+#   ./windows/osw devices
+#   ./windows/osw listen
+#
+# The .cmd sibling covers PowerShell and cmd. This exists because bash treats
+# backslashes as escapes, so `.\windows\osw` collapses to `.windowsosw`.
+
+set -e
+
+here="$(cd "$(dirname "$0")" && pwd)"
+tfm="net10.0-windows10.0.22000.0"
+base="$here/src/OpenSuperWhisper.Cli/bin"
+
+exe="$base/Release/$tfm/win-x64/osw.exe"
+[ -x "$exe" ] || exe="$base/Debug/$tfm/win-x64/osw.exe"
+
+if [ ! -x "$exe" ]; then
+    echo "osw is not built yet." >&2
+    echo "  dotnet build \"$here/OpenSuperWhisper.slnx\" -c Release" >&2
+    exit 1
+fi
+
+exec "$exe" "$@"

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>OpenSuperWhisper.App</RootNamespace>
+    <AssemblyName>OpenSuperWhisper</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenSuperWhisper.Core\OpenSuperWhisper.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- System tray icon and menu, replacing the mac app's NSStatusItem. -->
+    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.3.0" />
+  </ItemGroup>
+
+  <!--
+    UI Automation needs no explicit Reference: UseWPF brings UIAutomationClient and
+    UIAutomationTypes in already, and adding them by hand produces an unresolvable
+    conflict with the framework-supplied copies. This is why the UIA caret strategy
+    lives in this project rather than Core - Core must not depend on WPF.
+  -->
+
+  <ItemGroup>
+    <AssemblyMetadata Include="BundledModelPath" Value="$(BundledModelPath)" />
+    <AssemblyMetadata Include="VadModelPath" Value="$(VadModelPath)" />
+  </ItemGroup>
+
+</Project>

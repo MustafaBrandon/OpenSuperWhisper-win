@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/OpenSuperWhisper.App/OpenSuperWhisper.App.csproj" />
     <Project Path="src/OpenSuperWhisper.Cli/OpenSuperWhisper.Cli.csproj" />
     <Project Path="src/OpenSuperWhisper.Core/OpenSuperWhisper.Core.csproj" />
     <Project Path="src/OpenSuperWhisper.Interop/OpenSuperWhisper.Interop.csproj" />

@@ -41,6 +41,103 @@ public static partial class Win32Window
     public static partial short VkKeyScanEx(ushort ch, IntPtr dwhkl);
 
     // =========================================================================
+    // Caret and screen geometry
+    // =========================================================================
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+
+        public readonly int Width => Right - Left;
+        public readonly int Height => Bottom - Top;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Point
+    {
+        public int X;
+        public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct GuiThreadInfo
+    {
+        public uint cbSize;
+        public uint flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public Rect rcCaret;
+    }
+
+    /// <summary>
+    /// Reports the caret rectangle for a thread, in client coordinates of
+    /// <c>hwndCaret</c>.
+    /// </summary>
+    /// <remarks>
+    /// Cheap and synchronous, unlike UI Automation — but it only knows about classic
+    /// Win32 carets. WPF, Chromium, Electron and UWP surfaces report nothing here, which
+    /// is exactly why there is a fallback chain rather than a single strategy.
+    /// </remarks>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetGUIThreadInfo(uint idThread, ref GuiThreadInfo lpgui);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ClientToScreen(IntPtr hWnd, ref Point lpPoint);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetCursorPos(out Point lpPoint);
+
+    public const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MonitorInfo
+    {
+        public uint cbSize;
+        public Rect rcMonitor;
+
+        /// <summary>Excludes the taskbar — what the indicator must stay inside.</summary>
+        public Rect rcWork;
+
+        public uint dwFlags;
+    }
+
+    [LibraryImport("user32.dll")]
+    public static partial IntPtr MonitorFromPoint(Point pt, uint dwFlags);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetMonitorInfoW")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
+
+    /// <summary>
+    /// Working area of the monitor containing <paramref name="point"/>, in physical
+    /// pixels. Falls back to a generous rectangle if the query fails, so callers never
+    /// have to handle a null screen.
+    /// </summary>
+    public static Rect WorkAreaForPoint(Point point)
+    {
+        var monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
+
+        if (monitor != IntPtr.Zero)
+        {
+            var info = new MonitorInfo { cbSize = (uint)Marshal.SizeOf<MonitorInfo>() };
+            if (GetMonitorInfo(monitor, ref info)) return info.rcWork;
+        }
+
+        return new Rect { Left = 0, Top = 0, Right = 1920, Bottom = 1080 };
+    }
+
+    // =========================================================================
     // Integrity level
     // =========================================================================
 
