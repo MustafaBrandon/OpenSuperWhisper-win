@@ -69,6 +69,15 @@ public partial class App : Application
         try
         {
             StartDictation();
+
+            // Diagnostic target, opened alongside the normal app so a dictation can be
+            // aimed at something we can read back.
+            if (e.Args.Contains("--paste-target"))
+            {
+                new PasteTargetWindow().Show();
+                Log.Write("paste target window opened");
+            }
+
             Log.Write("startup complete");
         }
         catch (Exception ex)

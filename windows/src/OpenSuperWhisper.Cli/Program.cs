@@ -37,6 +37,8 @@ internal static class Program
 
     private static int Run(string[] args)
     {
+        Core.Diagnostics.Log.Start(Core.AppPaths.Root, "log-cli.txt");
+
         var modelPath = GetOption(args, "--model") ?? Meta("DefaultModelPath");
         var vadPath = GetOption(args, "--vad-model") ?? Meta("DefaultVadModelPath");
         var verbose = args.Contains("--verbose") || args.Contains("-v");

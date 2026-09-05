@@ -18,15 +18,24 @@ public static class Log
     /// <summary>Where the log is written. Null until <see cref="Start"/> runs.</summary>
     public static string? Path => _path;
 
-    /// <summary>Begins a fresh log for this run.</summary>
-    public static void Start(string directory)
+    /// <summary>
+    /// Begins a fresh log for this run.
+    /// </summary>
+    /// <param name="directory">Where to write.</param>
+    /// <param name="name">
+    /// Log file name. The app and the CLI use different ones: they can run at the same
+    /// time, and sharing a file meant whichever started second truncated the other's
+    /// output — which is exactly the evidence you want when diagnosing an interaction
+    /// between them.
+    /// </param>
+    public static void Start(string directory, string name = "log.txt")
     {
         lock (Gate)
         {
             try
             {
                 Directory.CreateDirectory(directory);
-                _path = System.IO.Path.Combine(directory, "log.txt");
+                _path = System.IO.Path.Combine(directory, name);
 
                 // Truncate per run rather than rotating: this is a debugging aid, and
                 // the interesting content is always the most recent launch.

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using OpenSuperWhisper.Core.Diagnostics;
 using OpenSuperWhisper.Interop;
 
 namespace OpenSuperWhisper.Core.Text;
@@ -102,7 +103,20 @@ public static class TextInjector
         var snapshot = keepInClipboard ? null : ClipboardService.Capture();
 
         var sequence = ClipboardService.SetText(text);
-        if (sequence is null) return InsertionResult.Failed;
+        if (sequence is null)
+        {
+            Log.Write("  paste: clipboard write FAILED");
+            return InsertionResult.Failed;
+        }
+
+        // Read back rather than trusting the write. SetClipboardData can report success
+        // and leave nothing retrievable when the clipboard was opened without an owner
+        // window, and a paste of stale content is worse than a reported failure.
+        var readBack = ClipboardService.GetText();
+        if (readBack != text)
+        {
+            Log.Write($"  paste: clipboard read-back mismatch (got {readBack?.Length.ToString() ?? "null"} chars, expected {text.Length})");
+        }
 
         SendPasteKeystroke();
 
@@ -133,7 +147,15 @@ public static class TextInjector
         inputs[2] = KeyUp(virtualKey);
         inputs[3] = KeyUp((ushort)Win32Input.VK_LCONTROL);
 
-        Win32Input.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Win32Input.Input>());
+        var sent = Win32Input.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Win32Input.Input>());
+
+        var foreground = Win32Window.GetForegroundWindow();
+        Log.Write($"  paste: sent {sent}/4 events, vk=0x{virtualKey:X2}, foreground=0x{foreground:X}");
+
+        if (sent != inputs.Length)
+        {
+            Log.Write($"  paste: SendInput rejected events, error {Marshal.GetLastWin32Error()}");
+        }
     }
 
     /// <summary>
