@@ -51,7 +51,20 @@
     <RepoRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)..'))</RepoRoot>
     <WhisperCppDir>$(RepoRoot)libwhisper\whisper.cpp\</WhisperCppDir>
     <AutocorrectDir>$(RepoRoot)asian-autocorrect\</AutocorrectDir>
+
+    <!-- Default whisper model, bundled with the installer (Rev. 3). -->
     <BundledModelPath>$(RepoRoot)ggml-tiny.en.bin</BundledModelPath>
+
+    <!--
+      Silero VAD model. Always required - VAD gating is what stops silence
+      producing hallucinated text, so this ships alongside every whisper model.
+      Currently borrowed from the mac app's bundle; at the split it moves into
+      the standalone repo with the rest.
+    -->
+    <VadModelPath>$(RepoRoot)OpenSuperWhisper\ggml-silero-v5.1.2.bin</VadModelPath>
+
+    <!-- Reference audio for golden-transcript parity against the mac build. -->
+    <SampleAudioPath>$(RepoRoot)jfk.wav</SampleAudioPath>
   </PropertyGroup>
 
   <PropertyGroup Label="Layout" Condition="'$(MSBuildProjectExtension)' == '.csproj'">

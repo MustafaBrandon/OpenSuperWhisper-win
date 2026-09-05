@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>OpenSuperWhisper.Cli</RootNamespace>
+    <AssemblyName>osw</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenSuperWhisper.Core\OpenSuperWhisper.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    Default model locations for convenience when running from the build tree.
+    Overridable on the command line, and irrelevant once the app manages its
+    own models directory under %LOCALAPPDATA%.
+  -->
+  <ItemGroup>
+    <AssemblyMetadata Include="DefaultModelPath" Value="$(BundledModelPath)" />
+    <AssemblyMetadata Include="DefaultVadModelPath" Value="$(VadModelPath)" />
+  </ItemGroup>
+
+</Project>

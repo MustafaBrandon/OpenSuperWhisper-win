@@ -18,4 +18,15 @@
     <ProjectReference Include="..\..\src\OpenSuperWhisper.Interop\OpenSuperWhisper.Interop.csproj" />
   </ItemGroup>
 
+  <!--
+    Model and fixture locations reach the tests as assembly metadata rather than
+    hardcoded paths, so Directory.Build.props stays the single place that knows
+    where anything outside windows/ lives.
+  -->
+  <ItemGroup>
+    <AssemblyMetadata Include="BundledModelPath" Value="$(BundledModelPath)" />
+    <AssemblyMetadata Include="VadModelPath" Value="$(VadModelPath)" />
+    <AssemblyMetadata Include="SampleAudioPath" Value="$(SampleAudioPath)" />
+  </ItemGroup>
+
 </Project>
