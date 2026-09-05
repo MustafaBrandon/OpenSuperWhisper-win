@@ -1,6 +1,6 @@
 # OpenSuperWhisper for Windows — Porting Plan
 
-**Rev. 3** · Derived from the macOS source at `master` — 43 Swift files, 11,194 lines in the app target.
+**Rev. 4** · Derived from the macOS source at `master` — 43 Swift files, 11,194 lines in the app target.
 
 A module-by-module plan for rebuilding the macOS dictation app as a native Windows client: what
 carries over as logic, what gets rewritten against Win32, what gets dropped, and how each piece is
@@ -19,6 +19,11 @@ proven correct.
 - [11. Settled decisions](#11-settled-decisions)
 - [12. Out of scope](#12-out-of-scope)
 
+> **Rev. 4 changes.** M0 is built and green, and it turned up one thing that revises a decision's
+> reasoning without changing the decision: upstream whisper.cpp now ships its own **Parakeet**
+> implementation, so a second engine no longer needs ONNX Runtime — re-scoped from L to M in
+> [Section 11](#11-settled-decisions). Still deferred, now deliberately schedulable.
+>
 > **Rev. 3 changes.** Three revisions to Rev. 2, all in [Section 11](#11-settled-decisions).
 > The OS floor moves from Windows 10 22H2 to **Windows 11** — Windows 10 left support in October
 > 2025 and consumer ESU ends October 2026, so the earlier floor was set on facts that no longer
@@ -682,15 +687,37 @@ than a migration.
 
 ### Whisper only for v1
 
-**Decided.** No Parakeet, no second engine.
+**Decided.** No Parakeet, no second engine. **Reasoning revised in Rev. 4** — the decision stands,
+but it is cheaper to reverse than Rev. 2 assumed.
 
-Parakeet via ONNX Runtime stays open for later, but it doubles the engine surface — separate model
-management, language support, and progress semantics — and none of that is worth carrying while the
-transcription core is still being proven against the mac build.
+Rev. 2 costed Parakeet as an ONNX Runtime port: a new inference runtime, new model plumbing, new
+everything. The M0 build turned up something better. Upstream whisper.cpp — the submodule we already
+build — now ships its own Parakeet implementation, and `parakeet.dll` comes out of our existing
+CMake driver with no extra configuration.
+
+What that changes and what it does not:
+
+| | Rev. 2 assumption | Actual |
+| --- | --- | --- |
+| Inference runtime | Add ONNX Runtime | Already built, same submodule |
+| Interop | New binding stack | Second P/Invoke surface, 71 symbols, same technique |
+| Model | ONNX exports | `ggml-parakeet-tdt-0.6b-v3.bin`, same loader shape |
+| Engine implementation | Full | Full — unchanged |
+| Model catalog, language list, engine-selection UI | Full | Full — unchanged |
+
+So acquisition got much cheaper; integration did not. Parakeet is a genuinely separate engine — its
+own context, state, params, mel and tokenize entry points — not a mode of Whisper. The reason to
+defer still holds: a second engine doubles model management, language support, progress semantics
+and settings surface while the first one is still being proven against the mac build.
+
+Re-scoped from **L, needs a new runtime** to **M, second interop surface against a DLL we already
+produce**. Worth scheduling deliberately after M6, not slipping into the current milestones.
 
 **Obliges** — `selectedEngine` keeps its key and its `whisper` default but has no second value;
-`fluidAudioModelVersion` is dropped. The engine interface stays an interface rather than collapsing
-into `WhisperEngine`, so adding a second one later is an addition, not a refactor.
+`fluidAudioModelVersion` is dropped. The engine interface stays a real interface rather than
+collapsing into `WhisperEngine` — that obligation now has a concrete payoff, since the second
+implementation is a known quantity rather than a hypothetical. `parakeet.dll` is built but not
+copied into artifacts; re-including it is one line in `build-native.ps1`.
 
 ### x64 only
 

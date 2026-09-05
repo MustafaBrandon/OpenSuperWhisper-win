@@ -1,0 +1,63 @@
+name: Windows Build
+
+on:
+  push:
+    paths:
+      - 'windows/**'
+      - 'libwhisper/**'
+      - 'asian-autocorrect'
+      - '.github/workflows/windows-build.yml'
+  pull_request:
+    paths:
+      - 'windows/**'
+      - 'libwhisper/**'
+      - 'asian-autocorrect'
+      - '.github/workflows/windows-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Add Rust MSVC target
+        run: rustup target add x86_64-pc-windows-msvc
+
+      - name: Build native dependencies
+        shell: pwsh
+        run: ./windows/native/build-native.ps1 -Configuration Release
+
+      - name: Restore
+        run: dotnet restore windows/OpenSuperWhisper.slnx
+
+      - name: Build
+        run: dotnet build windows/OpenSuperWhisper.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test windows/OpenSuperWhisper.slnx --configuration Release --no-build --verbosity normal
+
+      # The client must remain extractable as a standalone repository. Verifying
+      # it here means a change that reaches outside windows/ fails now, rather
+      # than at the split. See docs/windows-port.md, "Repository layout".
+      - name: Verify subtree split still builds
+        shell: pwsh
+        run: |
+          git config user.email "ci@example.com"
+          git config user.name "CI"
+          git subtree split --prefix=windows -b split-check
+          $tmp = Join-Path $env:RUNNER_TEMP 'split-check'
+          git clone . $tmp --branch split-check --single-branch
+          Write-Host "Split tree contents:"
+          Get-ChildItem $tmp | Select-Object Name
+          if (-not (Test-Path (Join-Path $tmp 'OpenSuperWhisper.slnx'))) {
+            throw "Split tree is missing the solution - windows/ is not self-contained."
+          }

@@ -1,8 +1,19 @@
 name: Build Check
 
 on:
+  # The Windows client under windows/ does not build the mac target, so
+  # Windows-only commits should not spin up a macOS runner.
+  # See docs/windows-port.md, milestone M0.
   push:
+    paths-ignore:
+      - 'windows/**'
+      - 'docs/**'
+      - '**/*.md'
   pull_request:
+    paths-ignore:
+      - 'windows/**'
+      - 'docs/**'
+      - '**/*.md'
 
 jobs:
   build:

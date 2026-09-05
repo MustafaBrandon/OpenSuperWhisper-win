@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenSuperWhisper.Core</RootNamespace>
+    <AssemblyName>OpenSuperWhisper.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpenSuperWhisper.Interop\OpenSuperWhisper.Interop.csproj" />
+  </ItemGroup>
+
+</Project>

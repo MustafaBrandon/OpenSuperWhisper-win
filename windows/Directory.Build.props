@@ -1,0 +1,63 @@
+<Project>
+
+  <!--
+    Shared settings for the managed projects under windows/.
+    See docs/windows-port.md for the decisions these encode.
+
+    IMPORTANT: everything here is scoped to .csproj.
+
+    MSBuild auto-imports the nearest Directory.Build.props by walking UP from a
+    project file, and CMake's Visual Studio generator writes its probe projects
+    and the generated whisper.cpp vcxproj files into windows/build/native/.
+    Those are under this directory, so without the condition below they would
+    import these properties and try to build C++ against a TargetFramework.
+    Unconditional properties here break the native build.
+  -->
+
+  <PropertyGroup Condition="'$(MSBuildProjectExtension)' == '.csproj'">
+    <!--
+      The Windows version is part of the TFM on purpose. Bare `net10.0-windows`
+      infers TargetPlatformVersion 7.0, which cannot carry the 22000 floor below
+      and fails with NETSDK1135. Nothing here uses WinRT, so targeting the floor
+      directly is enough - no need to build against a newer SDK projection.
+    -->
+    <TargetFramework>net10.0-windows10.0.22000.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Rev. 3: x64 only, Windows 11 (build 22000) floor. -->
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <!--
+    ============================================================
+    The ONLY place managed code reaches outside windows/.
+    ============================================================
+    Keeping these in one file is what makes the eventual subtree
+    split a command rather than a migration: at the split, only
+    this block needs rewriting. Do not hardcode a relative path
+    to the repo root anywhere else.
+
+    The native side has one equivalent: OSW_WHISPER_CPP_DIR in
+    native/CMakeLists.txt.
+  -->
+  <PropertyGroup Label="ExternalPaths" Condition="'$(MSBuildProjectExtension)' == '.csproj'">
+    <RepoRoot>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)..'))</RepoRoot>
+    <WhisperCppDir>$(RepoRoot)libwhisper\whisper.cpp\</WhisperCppDir>
+    <AutocorrectDir>$(RepoRoot)asian-autocorrect\</AutocorrectDir>
+    <BundledModelPath>$(RepoRoot)ggml-tiny.en.bin</BundledModelPath>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Layout" Condition="'$(MSBuildProjectExtension)' == '.csproj'">
+    <WindowsRoot>$(MSBuildThisFileDirectory)</WindowsRoot>
+    <NativeArtifactsDir>$(WindowsRoot)artifacts\native\</NativeArtifactsDir>
+    <NativeBuildDir>$(WindowsRoot)build\native\</NativeBuildDir>
+  </PropertyGroup>
+
+</Project>

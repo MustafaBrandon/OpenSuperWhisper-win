@@ -1,0 +1,15 @@
+# Build output
+bin/
+obj/
+build/
+artifacts/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+
+# Test results
+TestResults/
+*.trx

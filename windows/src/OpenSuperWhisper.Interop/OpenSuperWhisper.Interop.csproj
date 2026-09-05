@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>OpenSuperWhisper.Interop</RootNamespace>
+    <AssemblyName>OpenSuperWhisper.Interop</AssemblyName>
+  </PropertyGroup>
+
+  <!--
+    Native DLLs are produced by windows/native/build-native.ps1 and copied
+    next to the managed output. This project never builds native code.
+  -->
+  <ItemGroup>
+    <NativeArtifact Include="$(NativeArtifactsDir)*.dll" />
+    <None Include="@(NativeArtifact)"
+          Link="%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          Visible="false" />
+  </ItemGroup>
+
+  <Target Name="WarnIfNativeMissing" BeforeTargets="Build">
+    <Warning Condition="!Exists('$(NativeArtifactsDir)whisper.dll')"
+             Text="whisper.dll not found in $(NativeArtifactsDir). Run windows\native\build-native.ps1 first; interop tests will fail until you do." />
+  </Target>
+
+</Project>
