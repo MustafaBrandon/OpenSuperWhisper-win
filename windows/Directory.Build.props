@@ -26,7 +26,15 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!--
+      InvariantGlobalization must stay FALSE. WPF's font subsystem needs ICU data and
+      throws TypeInitializationException on MS.Internal.FontCache.MajorLanguages
+      without it. The failure does not appear at startup — the window can be created
+      and shown — it appears the first time real text is rendered, which made it look
+      like the hotkey was broken rather than the theme. The deployment saving is not
+      worth a UI that cannot draw.
+    -->
 
     <!-- Rev. 3: x64 only, Windows 11 (build 22000) floor. -->
     <Platforms>x64</Platforms>

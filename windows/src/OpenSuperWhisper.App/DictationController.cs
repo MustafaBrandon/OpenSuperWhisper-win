@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows.Threading;
 using OpenSuperWhisper.Core.Audio;
+using OpenSuperWhisper.Core.Diagnostics;
 using OpenSuperWhisper.Core.Indicator;
 using OpenSuperWhisper.Core.Input;
 using OpenSuperWhisper.Core.Text;
@@ -71,11 +72,14 @@ public sealed class DictationController : IDisposable
 
     private void OnStartRequested()
     {
+        Log.Write("trigger: start requested");
+
         // Refuse rather than queue: a second recording while the first is still
         // transcribing would contend for the engine, and telling the user is better
         // than silently stacking work.
         if (!_pipeline.Wait(0))
         {
+            Log.Write("  refused: pipeline busy");
             _dispatcher.Invoke(() => ShowTransient(IndicatorState.Busy));
             _triggers.NotifyRecordingStopped();
             return;
@@ -113,7 +117,13 @@ public sealed class DictationController : IDisposable
 
             RenderState();
             _indicator.Show();
-            _indicator.MoveToAnchor(_caret.Resolve());
+
+            var anchor = _caret.Resolve();
+            _indicator.MoveToAnchor(anchor);
+
+            Log.Write($"  recording; indicator at {anchor.X},{anchor.Y} via {anchor.Source} " +
+                      $"(visible={_indicator.IsVisible} {_indicator.Left:F0},{_indicator.Top:F0} " +
+                      $"{_indicator.ActualWidth:F0}x{_indicator.ActualHeight:F0})");
         });
     }
 
@@ -127,8 +137,13 @@ public sealed class DictationController : IDisposable
         });
 
         // A second stop while already decoding: ignore it rather than re-entering.
-        if (!accepted) return;
+        if (!accepted)
+        {
+            Log.Write("trigger: stop ignored (not recording)");
+            return;
+        }
 
+        Log.Write("trigger: stop requested, transcribing");
         _ = Task.Run(RunTranscriptionAsync);
     }
 
@@ -137,18 +152,29 @@ public sealed class DictationController : IDisposable
         try
         {
             var wav = await _recorder.StopAsync().ConfigureAwait(false);
-            if (wav is null) return;
+            if (wav is null)
+            {
+                Log.Write("  discarded: under minimum duration");
+                return;
+            }
 
             try
             {
                 var samples = AudioDecoder.DecodeToWhisperFormat(wav);
                 var text = _engine.Transcribe(samples);
 
-                if (string.IsNullOrEmpty(text)) return;
+                if (string.IsNullOrEmpty(text))
+                {
+                    Log.Write("  no speech detected");
+                    return;
+                }
+
+                Log.Write($"  transcript: {text}");
 
                 _dispatcher.Invoke(() =>
                 {
                     var outcome = TextInjector.Insert(text, Insertion);
+                    Log.Write($"  insertion: {outcome}");
 
                     if (outcome == InsertionResult.BlockedByElevation)
                     {
@@ -165,10 +191,11 @@ public sealed class DictationController : IDisposable
                 try { File.Delete(wav); } catch (IOException) { }
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // A failed transcription must still tear the session down cleanly, or the
             // next hotkey press finds the pipeline permanently held.
+            Log.Error("transcription failed", ex);
         }
         finally
         {

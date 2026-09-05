@@ -1,8 +1,10 @@
+using System.IO;
 using System.Reflection;
 using System.Windows;
 using H.NotifyIcon;
 using OpenSuperWhisper.Core;
 using OpenSuperWhisper.Core.Audio;
+using OpenSuperWhisper.Core.Diagnostics;
 using OpenSuperWhisper.Core.Input;
 using OpenSuperWhisper.Core.Text;
 
@@ -39,10 +41,13 @@ public partial class App : Application
             return;
         }
 
-        if (!Environment.OSVersion.Version.Build.Equals(0) && Environment.OSVersion.Version.Build < 22000)
+        Log.Start(AppPaths.Root);
+        Log.Write($"starting — Windows build {Environment.OSVersion.Version.Build}");
+
+        // Rev. 3 sets the floor at Windows 11. Say so rather than failing later in a
+        // way that looks like a bug.
+        if (Environment.OSVersion.Version.Build < 22000)
         {
-            // Rev. 3 sets the floor at Windows 11. Say so rather than failing later in
-            // a way that looks like a bug.
             MessageBox.Show(
                 "OpenSuperWhisper requires Windows 11 (build 22000) or later.",
                 "Unsupported Windows version", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -50,14 +55,27 @@ public partial class App : Application
             return;
         }
 
+        // Anything unhandled on the UI thread would otherwise vanish with the process
+        // and leave nothing to diagnose.
+        DispatcherUnhandledException += (_, args) =>
+        {
+            Log.Error("unhandled UI exception", args.Exception);
+            MessageBox.Show(
+                $"OpenSuperWhisper hit an error.\n\n{args.Exception.Message}\n\nLog: {Log.Path}",
+                "OpenSuperWhisper", MessageBoxButton.OK, MessageBoxImage.Error);
+            args.Handled = true;
+        };
+
         try
         {
             StartDictation();
+            Log.Write("startup complete");
         }
         catch (Exception ex)
         {
+            Log.Error("startup failed", ex);
             MessageBox.Show(
-                $"OpenSuperWhisper could not start.\n\n{ex.Message}",
+                $"OpenSuperWhisper could not start.\n\n{ex.Message}\n\nLog: {Log.Path}",
                 "OpenSuperWhisper", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown();
         }
@@ -72,6 +90,8 @@ public partial class App : Application
 
         var modelPath = Meta("BundledModelPath");
         var vadPath = Meta("VadModelPath");
+        Log.Write($"model: {modelPath} (exists: {File.Exists(modelPath)})");
+        Log.Write($"vad:   {vadPath} (exists: {File.Exists(vadPath)})");
 
         _indicator = new IndicatorWindow();
 
@@ -79,17 +99,24 @@ public partial class App : Application
         // creation on top of everything else it is already doing.
         _indicator.Show();
         _indicator.Hide();
+        Log.Write("indicator window created");
 
         _controller = new DictationController(Dispatcher, _indicator, modelPath, vadPath)
         {
             Insertion = new InsertionOptions(Paste: true, CopyToClipboard: false),
         };
+        Log.Write("engine loaded");
+
+        var microphone = _controller.Microphones.ActiveDevice;
+        Log.Write($"microphone: {microphone?.ToString() ?? "NONE"}");
 
         _controller.Triggers.HoldToRecord = true;
         _controller.Triggers.UseModifierKey(ModifierKey.RightAlt);
         _controller.Start();
+        Log.Write("hooks installed, trigger = RightAlt");
 
         BuildTray();
+        Log.Write("tray icon created");
     }
 
     private void BuildTray()

@@ -55,6 +55,19 @@ public sealed class TriggerCoordinator : IDisposable
     /// <summary>Raised when Escape is pressed while recording.</summary>
     public event EventHandler? CancelRequested;
 
+    /// <summary>
+    /// When set, synthesised input is treated as real.
+    /// </summary>
+    /// <remarks>
+    /// Debug affordance, off by default and gated on <c>OSW_ACCEPT_INJECTED=1</c>.
+    /// Injected events are normally dropped so the app cannot trigger itself with the
+    /// keystrokes it sends to paste — which also means no automated test can ever
+    /// drive the trigger, since SendInput always marks its events injected. This makes
+    /// the path testable without weakening the shipped behaviour.
+    /// </remarks>
+    public bool AcceptInjectedInput { get; set; } =
+        Environment.GetEnvironmentVariable("OSW_ACCEPT_INJECTED") == "1";
+
     public TriggerCoordinator()
     {
         // Follow the user's own double-click speed rather than inventing a value.
@@ -164,7 +177,7 @@ public sealed class TriggerCoordinator : IDisposable
     {
         // Our own synthesised keystrokes must never be read as user input, or pasting
         // a transcript could start another recording.
-        if (e.Injected) return;
+        if (e.Injected && !AcceptInjectedInput) return;
 
         var isDown = e.Message is Win32Input.WM_KEYDOWN or Win32Input.WM_SYSKEYDOWN;
         var isUp = e.Message is Win32Input.WM_KEYUP or Win32Input.WM_SYSKEYUP;
@@ -187,7 +200,7 @@ public sealed class TriggerCoordinator : IDisposable
 
     private void OnMouseEvent(object? sender, HookEvent e)
     {
-        if (e.Injected) return;
+        if (e.Injected && !AcceptInjectedInput) return;
 
         lock (_gate)
         {
