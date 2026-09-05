@@ -27,10 +27,11 @@ public class TranscriptionTests(ITestOutputHelper output)
     /// change there would be a genuine behavioural regression worth failing on.
     /// </para>
     /// <para>
-    /// NOT YET verified against the macOS build. Same model, same whisper.cpp revision
-    /// and same parameters should give identical text, but that comparison needs a Mac
-    /// and has not been run. Until it is, this pins Windows-to-Windows consistency
-    /// only. See docs/windows-port.md, M1 exit criteria.
+    /// Cross-platform parity is deliberately NOT asserted here. Comparing against the
+    /// macOS build needs a Mac; that comparison was waived, and this Windows output is
+    /// the accepted reference. So this pins Windows-to-Windows consistency only — it
+    /// is not evidence the two platforms agree. Not an open TODO; see the parity
+    /// waiver under M1 in docs/windows-port.md.
     /// </para>
     /// </remarks>
     private const string ExpectedJfk =

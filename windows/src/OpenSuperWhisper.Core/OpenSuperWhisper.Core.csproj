@@ -9,4 +9,18 @@
     <ProjectReference Include="..\OpenSuperWhisper.Interop\OpenSuperWhisper.Interop.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- WASAPI capture, device enumeration, and Media Foundation decoding. -->
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Device-transport classification is internal: it is an implementation detail of
+      MicrophoneService, but it is pure string logic and worth testing directly rather
+      than only through a real audio device.
+    -->
+    <InternalsVisibleTo Include="OpenSuperWhisper.Tests" />
+  </ItemGroup>
+
 </Project>

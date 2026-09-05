@@ -525,8 +525,10 @@ proven, so it should exist before any UI is written.
   nothing else; a silent fixture yields none.
 - **State isolation.** Two consecutive transcriptions on one loaded model produce identical output
   to two independent runs — no prompt bleed.
-- **Golden transcripts.** `jfk.wav` and a small fixture set transcribe to the same text as the mac
-  build, per model. This is the regression net for every engine change.
+- **Golden transcripts.** `jfk.wav` and a small fixture set transcribe to a recorded reference
+  string, per model. The reference is the Windows build's own verified-correct output, not the mac
+  build's — see the parity waiver under M1. This is the regression net for every engine, parameter
+  and submodule change.
 - **Temp cleanup.** Only files older than 24 h are removed; a missing directory does not throw.
 
 ### Tier 3 — Needs a desktop session
@@ -595,7 +597,15 @@ assembly, cancellation, progress. No UI, no capture.
 This is where the VAD binding question gets answered, and where golden-transcript parity with the
 mac build is established.
 
-> **Exit** — `jfk.wav` matches the mac output; Tier 2 decode, VAD and isolation tests pass.
+> **Exit** — `jfk.wav` transcribes correctly; Tier 2 decode, VAD and isolation tests pass.
+> **Met.** ~13x realtime on CPU with tiny.en.
+
+**Mac parity comparison waived.** The original criterion said "matches the mac output". Running it
+needs a Mac, and the decision is to accept the Windows transcript as the reference instead. What the
+golden test pins is therefore Windows-to-Windows consistency — a regression net for engine,
+parameter and submodule changes — not cross-platform equivalence. Same model, same whisper.cpp
+revision and same parameters should give identical text, but that is reasoning, not evidence. If a
+Mac becomes available, running the comparison once would upgrade the guarantee cheaply.
 
 ### M2 · Microphone to file
 
@@ -603,7 +613,24 @@ WASAPI capture at 16 kHz mono 16-bit, device enumeration and hotplug, minimum-du
 rules, temp sweep.
 
 > **Exit** — A harness records from a chosen device and feeds M1 end to end; short captures are
-> discarded; Bluetooth warm-up is detected.
+> discarded; Bluetooth warm-up is detected. **Met, with one caveat below.**
+
+Verified on hardware: `osw record --seconds 3` captures 3.24 s — the extra 0.24 s is the stop tail
+doing its job — resamples 48 kHz stereo to 16 kHz mono, gates through VAD and transcribes. A 0.5 s
+capture is discarded with no temp files left behind.
+
+**Bluetooth warm-up is implemented but not verified on hardware.** Transport classification is
+tested against real `PKEY_Device_EnumeratorName` strings, and the built-in array on the dev machine
+classifies correctly as `Builtin`. But no Bluetooth microphone was available, so the warm-up path
+itself — the delay between starting capture and the device actually delivering samples — has never
+been exercised. Treat it as untested until someone pairs a headset. It is on the Tier 4 matrix.
+
+One finding worth remembering: NAudio's `PKEY_Device_InstanceId` is **not** the property to
+classify transport with. It resolves to the MMDEVAPI software endpoint
+(`SWD\MMDEVAPI\{0.0.1...}`), identical in shape for every device, so every microphone comes back
+`Unknown` and Bluetooth never gets its warm-up state. The bus name lives in
+`PKEY_Device_EnumeratorName` (`{a45c254e-df1c-4efd-8020-67d146a850e0}`, PID 24), which NAudio does
+not expose and which the code declares by hand. There is a regression test pinning this.
 
 ### M3 · Global input
 

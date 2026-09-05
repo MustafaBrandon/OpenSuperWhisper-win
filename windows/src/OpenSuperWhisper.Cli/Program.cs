@@ -1,12 +1,13 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using OpenSuperWhisper.Core.Audio;
 using OpenSuperWhisper.Core.Transcription;
 
 namespace OpenSuperWhisper.Cli;
 
 /// <summary>
-/// Headless transcription driver — the M1 deliverable.
+/// Headless transcription driver â€” the M1 deliverable.
 /// </summary>
 /// <remarks>
 /// Exists so the transcription core can be exercised and compared against the mac
@@ -36,10 +37,19 @@ internal static class Program
 
     private static int Run(string[] args)
     {
-        var audioPath = args[0];
         var modelPath = GetOption(args, "--model") ?? Meta("DefaultModelPath");
         var vadPath = GetOption(args, "--vad-model") ?? Meta("DefaultVadModelPath");
         var verbose = args.Contains("--verbose") || args.Contains("-v");
+
+        switch (args[0])
+        {
+            case "devices":
+                return RecordCommand.ListDevices(verbose);
+            case "record":
+                return RecordCommand.Record(args, modelPath, vadPath, verbose);
+        }
+
+        var audioPath = args[0];
 
         var settings = new TranscriptionSettings
         {
@@ -54,18 +64,19 @@ internal static class Program
             return 1;
         }
 
-        var (samples, sampleRate) = WavReader.Read(audioPath);
-
-        if (sampleRate != WavReader.WhisperSampleRate)
+        // Any format Media Foundation can read, resampled and downmixed to 16 kHz mono.
+        float[] samples;
+        try
         {
-            // Resampling belongs to the audio pipeline (module 02), which arrives with
-            // M2. Failing loudly is better than transcribing at the wrong rate and
-            // quietly producing nonsense.
-            Console.Error.WriteLine(
-                $"error: {audioPath} is {sampleRate} Hz; this build requires " +
-                $"{WavReader.WhisperSampleRate} Hz mono. Resampling arrives with M2.");
+            samples = AudioDecoder.DecodeToWhisperFormat(audioPath);
+        }
+        catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or COMException)
+        {
+            Console.Error.WriteLine($"error: could not decode {audioPath}: {ex.Message}");
             return 1;
         }
+
+        var sampleRate = AudioDecoder.WhisperSampleRate;
 
         // whisper.cpp logs model dimensions, VAD dumps and buffer sizes to stderr
         // unconditionally. Keep that behind --verbose rather than inflicting it on
@@ -123,10 +134,12 @@ internal static class Program
     private static void PrintUsage()
     {
         Console.WriteLine("""
-            osw - headless whisper transcription (M1)
+            osw - headless whisper transcription
 
             usage:
-              osw <audio.wav> [options]
+              osw <audio-file>          transcribe a file
+              osw record [options]      record from the microphone, then transcribe
+              osw devices               list audio input devices
 
             options:
               --model <path>       whisper model (.bin)      default: bundled tiny.en
@@ -137,8 +150,17 @@ internal static class Program
               -v, --verbose        timings and capabilities on stderr
               -h, --help           this message
 
-            Input must be 16 kHz mono WAV. Transcript goes to stdout; everything
-            else to stderr, so `osw file.wav > out.txt` captures only the text.
+            record options:
+              --device <id>        endpoint ID from `osw devices`; default is the
+                                   system default capture device
+              --seconds <n>        record for n seconds; default is until ENTER
+              --keep               keep the captured wav instead of deleting it
+
+            Any format Media Foundation can read is accepted for file input - wav,
+            mp3, m4a, wma, flac - and is resampled to 16 kHz mono automatically.
+
+            Transcript goes to stdout, everything else to stderr, so
+            `osw file.mp3 > out.txt` captures only the text.
             """);
     }
 }
