@@ -665,7 +665,28 @@ Clipboard paste with layout-correct `SendInput`, plus the Unicode direct-typing 
 three output modes, elevated-window detection.
 
 > **Exit** — Text lands correctly across the Tier 4 paste-target list; clipboard restore behaves
-> under both conditions; elevated failure is reported, not silent.
+> under both conditions; elevated failure is reported, not silent. **Partially met — the paste-target
+> matrix needs a human.**
+
+Verified automatically: clipboard round trip including non-ASCII, restore when untouched, refusal to
+restore when the clipboard moved, layout resolution producing a usable virtual key, the
+integrity-level walk completing without faulting, and all three insertion modes.
+
+**Both insertion methods are implemented. Clipboard paste is the default.** The deciding factor is
+structural rather than a benchmark: a clipboard paste is **4 input events regardless of transcript
+length**, while Unicode typing is **2 events per character** — roughly 400 events for a typical
+200-character dictation. That queue pressure is what makes Unicode typing lag in slow targets and
+drop characters in some terminals and games. Unicode typing stays available (`--type`) because it
+never touches the clipboard at all, which some users will prefer; it is a preference, not the
+default.
+
+Honest limit on that comparison: what was measured is the cost of our own `SendInput` call, not
+delivery. The receiving application drains the queue at its own pace, so real end-to-end latency
+needs a focused target window — which is what `osw insert --type` exists for.
+
+**The paste-target matrix is not automated and cannot be.** Whether text actually lands in Word,
+Chrome, Slack or Windows Terminal is only knowable by putting it there and looking. `osw insert`
+takes a countdown so the operator can focus a target first. Tier 4.
 
 ### M5 · Indicator and tray
 

@@ -49,6 +49,8 @@ internal static class Program
                 return RecordCommand.Record(args, modelPath, vadPath, verbose);
             case "listen":
                 return ListenCommand.Run(args, modelPath, vadPath, verbose);
+            case "insert":
+                return InsertCommand.Run(args);
         }
 
         var audioPath = args[0];
@@ -142,6 +144,7 @@ internal static class Program
               osw <audio-file>          transcribe a file
               osw record [options]      record from the microphone, then transcribe
               osw listen [options]      global hotkey dictation loop
+              osw insert [text]         inject text into the focused window
               osw devices               list audio input devices
 
             options:
@@ -166,6 +169,16 @@ internal static class Program
               --toggle             press to start, press again to stop
                                    (default is hold to record, release to stop)
               --double-tap         require a double tap to start recording
+
+            insertion options (listen and insert):
+              --type               type as unicode instead of pasting; never touches
+                                   the clipboard, but slower and less universally
+                                   supported
+              --keep-clipboard     leave the transcript on the clipboard instead of
+                                   restoring what was there before
+              --no-paste           print only, do not insert (listen)
+              --no-trailing-space  do not append a space after trailing punctuation
+              --delay <n>          seconds to wait before inserting (insert, default 5)
 
             Any format Media Foundation can read is accepted for file input - wav,
             mp3, m4a, wma, flac - and is resampled to 16 kHz mono automatically.

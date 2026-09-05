@@ -1,5 +1,6 @@
 using OpenSuperWhisper.Core.Audio;
 using OpenSuperWhisper.Core.Input;
+using OpenSuperWhisper.Core.Text;
 using OpenSuperWhisper.Core.Transcription;
 
 namespace OpenSuperWhisper.Cli;
@@ -19,6 +20,14 @@ internal static class ListenCommand
         var mode = GetOption(args, "--trigger") ?? "rightalt";
         var holdToRecord = !args.Contains("--toggle");
         var doubleTap = args.Contains("--double-tap");
+
+        var insertion = new InsertionOptions(
+            Paste: !args.Contains("--no-paste"),
+            CopyToClipboard: args.Contains("--keep-clipboard"),
+            Method: args.Contains("--type")
+                ? InsertionMethod.UnicodeTyping
+                : InsertionMethod.ClipboardPaste,
+            AddTrailingSpace: !args.Contains("--no-trailing-space"));
 
         TempRecordingSweeper.Sweep();
 
@@ -91,8 +100,28 @@ internal static class ListenCommand
                         var samples = AudioDecoder.DecodeToWhisperFormat(wav);
                         var text = engine.Transcribe(samples);
 
-                        if (string.IsNullOrEmpty(text)) Console.Error.WriteLine("(no speech detected)");
-                        else Console.WriteLine(text);
+                        if (string.IsNullOrEmpty(text))
+                        {
+                            Console.Error.WriteLine("(no speech detected)");
+                        }
+                        else
+                        {
+                            Console.WriteLine(text);
+
+                            var outcome = TextInjector.Insert(text, insertion);
+                            if (outcome == InsertionResult.BlockedByElevation)
+                            {
+                                Console.Error.WriteLine(
+                                    "(not inserted: the focused window is running elevated. " +
+                                    "Windows blocks synthesised input from a normal process to an " +
+                                    "elevated one. The text is on your clipboard.)");
+                                ClipboardService.SetText(text);
+                            }
+                            else if (outcome == InsertionResult.Failed)
+                            {
+                                Console.Error.WriteLine("(insertion failed)");
+                            }
+                        }
                     }
                     finally
                     {
@@ -133,6 +162,7 @@ internal static class ListenCommand
         Console.Error.WriteLine($"trigger : {mode}");
         Console.Error.WriteLine($"mode    : {(holdToRecord ? "hold to record" : "toggle")}"
             + (doubleTap ? " + double tap to start" : ""));
+        Console.Error.WriteLine($"insert  : {DescribeInsertion(insertion)}");
         Console.Error.WriteLine("escape  : cancel an in-flight recording");
         Console.Error.WriteLine("ctrl+c  : quit");
         Console.Error.WriteLine();
@@ -147,6 +177,22 @@ internal static class ListenCommand
         quit.Wait();
         Console.Error.WriteLine("stopping...");
         return 0;
+    }
+
+    private static string DescribeInsertion(InsertionOptions options)
+    {
+        if (!options.Paste)
+        {
+            return options.CopyToClipboard ? "copy to clipboard only" : "nothing (print only)";
+        }
+
+        var method = options.Method == InsertionMethod.UnicodeTyping
+            ? "type as unicode"
+            : "clipboard paste";
+
+        return options.CopyToClipboard
+            ? $"{method}, keep on clipboard"
+            : $"{method}, restore clipboard after {TextInjector.ClipboardRestoreDelay.TotalSeconds:F1}s";
     }
 
     private static void ApplyTrigger(TriggerCoordinator coordinator, string mode)
