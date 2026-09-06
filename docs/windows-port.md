@@ -19,6 +19,10 @@ proven correct.
 - [11. Settled decisions](#11-settled-decisions)
 - [12. Out of scope](#12-out-of-scope)
 
+> **Status.** M0–M5 complete and verified on hardware. The app runs from the tray, dictates on a
+> global hotkey, and inserts into the focused application. 161 tests. Remaining: M6 (main window,
+> settings, model management, onboarding), M7 (packaging), M8 (Parakeet, deferred).
+>
 > **Rev. 4 changes.** M0 is built and green, and it turned up one thing that revises a decision's
 > reasoning without changing the decision: upstream whisper.cpp now ships its own **Parakeet**
 > implementation, so a second engine no longer needs ONNX Runtime — re-scoped from L to M in
@@ -694,7 +698,34 @@ The layered overlay with all six states, caret anchoring, cancel confirmation, t
 At the end of this milestone the product exists.
 
 > **Exit** — Full dictation loop — hotkey, record, transcribe, paste — with no main window open, on
-> a mixed-DPI setup.
+> a mixed-DPI setup. **Met**, verified on hardware.
+
+Two failures surfaced here that no earlier milestone could have caught, both worth recording because
+they are the kind that recur.
+
+**`InvariantGlobalization=true` breaks WPF text rendering.** Set at M0 for a marginal deployment
+saving; WPF's font subsystem needs ICU data and throws `TypeInitializationException` on
+`MS.Internal.FontCache.MajorLanguages` without it. It does not fail at startup — the window is
+created and shown — it fails the first time real text is rendered, so it presented as "the hotkey
+does nothing". Every milestone through M4 passed because nothing before M5 rendered WPF text.
+
+**A pass-through trigger key breaks insertion.** Tapping Alt alone puts the focused window into menu
+mode, so the paste that follows a dictation lands in the menu bar instead of the text field —
+transcript correct, `SendInput` reporting success, nothing appearing. The bound trigger is now
+withheld from other applications, and the default moved from right Alt to right Ctrl (right Alt is
+AltGr on many layouts; binding it would cost those users their accented characters). No mac
+counterpart: Option and Command carry no menu semantics.
+
+Both were invisible to the test suite for the same structural reason — the trigger-to-insertion path
+cannot be driven by synthesised input, because `SendInput` marks its events injected and the
+coordinator drops injected events by design. Three diagnostics now cover that blind spot:
+`--paste-target` (a window the app owns and can read back), `--test-insert` (an insertion under real
+in-app conditions, no speech needed), and `OSW_ACCEPT_INJECTED=1` (lets synthesised input drive the
+trigger).
+
+**Deliberate trade:** while bound, the trigger key does nothing else. Right Ctrl stops working for
+Ctrl+C; left Ctrl is unaffected. That is what binding a dedicated trigger means, and it is why the
+default matters.
 
 ### M6 · Windows and settings
 
@@ -719,6 +750,8 @@ hooks behind.
 | Risk | When known | Mitigation |
 | --- | --- | --- |
 | ~~VAD not exposed by the chosen binding~~ | — | **Retired in Rev. 3.** Building our own DLL means `whisper_vad_*` is exported by construction. The residual risk is only that we forget to enable it in the CMake configuration — caught by the Tier 2 VAD test. |
+| The trigger-to-insertion path cannot be self-tested | realised at M5 | `SendInput` marks its events injected and the coordinator drops injected events by design, so no synthesised keystroke can drive the trigger. Two shipped bugs lived in exactly this gap. Partly closed by `--paste-target`, `--test-insert` and `OSW_ACCEPT_INJECTED`; the join from a *real* key press to a landed paste still needs a human, every milestone, and is the single most valuable manual check. |
+| WPF runtime configuration breaking rendering | realised at M5 | `InvariantGlobalization` was the instance; the class is broader. Trimming, AOT and culture settings can all break WPF in ways that appear only when something is drawn, not at startup. Change them deliberately and exercise the UI afterwards. |
 | P/Invoke signature drift | M1, ongoing | Hand-written interop against a submodule that moves. A wrong struct layout is silent memory corruption, not a compile error. Pin the submodule deliberately, keep the struct definitions in one file next to the header they mirror, and treat a submodule bump as a change that requires the Tier 2 suite to pass. |
 | Hook silently removed under load | M3 | The callback posts to a queue and returns; never allocate, log or take a lock inside it. Add a watchdog that re-installs the hook if it stops firing. |
 | Antivirus flags the app | M7 | A program that hooks the keyboard, reads the clipboard and synthesizes input is a textbook heuristic match. Authenticode signing with a reputable certificate, plus submission to major vendors ahead of release. Budget real time for this. |

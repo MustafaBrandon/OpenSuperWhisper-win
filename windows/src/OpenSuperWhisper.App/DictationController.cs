@@ -29,7 +29,32 @@ public sealed class DictationController : IDisposable
     private readonly WhisperEngine _engine;
     private readonly DispatcherTimer _tick;
 
-    private readonly SemaphoreSlim _pipeline = new(1, 1);
+    /// <summary>
+    /// 1 while a dictation session owns the pipeline, 0 when idle.
+    /// </summary>
+    /// <remarks>
+    /// Replaces a semaphore that was released from several places, guarded by a
+    /// <c>CurrentCount == 0</c> check. That check was a race, and Escape during
+    /// decoding hit it squarely: the cancel path released while the transcription
+    /// task was still running and would release again in its finally, which either
+    /// throws or over-releases and later permits two concurrent recordings.
+    /// <para>
+    /// Interlocked claim and release makes ownership unambiguous and ending a session
+    /// idempotent — whoever gets there first wins, everyone else is a no-op.
+    /// </para>
+    /// </remarks>
+    private int _sessionActive;
+
+    /// <summary>
+    /// Set when the user cancels a session that has already reached transcription.
+    /// </summary>
+    /// <remarks>
+    /// Escape during decoding cannot un-run whisper, but it must stop the result being
+    /// inserted. Without this the indicator disappeared and the transcript was pasted
+    /// anyway, which reads as the cancel having been ignored.
+    /// </remarks>
+    private int _sessionCancelled;
+
     private bool _disposed;
 
     public InsertionOptions Insertion { get; set; } = new();
@@ -77,7 +102,7 @@ public sealed class DictationController : IDisposable
         // Refuse rather than queue: a second recording while the first is still
         // transcribing would contend for the engine, and telling the user is better
         // than silently stacking work.
-        if (!_pipeline.Wait(0))
+        if (!TryBeginSession())
         {
             Log.Write("  refused: pipeline busy");
             _dispatcher.Invoke(() => ShowTransient(IndicatorState.Busy));
@@ -90,7 +115,7 @@ public sealed class DictationController : IDisposable
         {
             _dispatcher.Invoke(() => ShowTransient(IndicatorState.NoMicrophone));
             _triggers.NotifyRecordingStopped();
-            _pipeline.Release();
+            EndSession();
             return;
         }
 
@@ -98,11 +123,12 @@ public sealed class DictationController : IDisposable
         {
             _recorder.Start(device.Value);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Log.Error("could not start capture", ex);
             _dispatcher.Invoke(() => ShowTransient(IndicatorState.NoMicrophone));
             _triggers.NotifyRecordingStopped();
-            _pipeline.Release();
+            EndSession();
             return;
         }
 
@@ -171,6 +197,15 @@ public sealed class DictationController : IDisposable
 
                 Log.Write($"  transcript: {text}");
 
+                // Escape cannot un-run whisper, but it must stop the result landing in
+                // the user's document. Checked here rather than earlier because the
+                // cancel can arrive at any point during the decode.
+                if (Volatile.Read(ref _sessionCancelled) == 1)
+                {
+                    Log.Write("  discarded: cancelled during transcription");
+                    return;
+                }
+
                 _dispatcher.Invoke(() =>
                 {
                     var outcome = TextInjector.Insert(text, Insertion);
@@ -201,7 +236,7 @@ public sealed class DictationController : IDisposable
         {
             _dispatcher.Invoke(HideIndicator);
             _triggers.NotifyRecordingStopped();
-            _pipeline.Release();
+            EndSession();
         }
     }
 
@@ -216,13 +251,32 @@ public sealed class DictationController : IDisposable
                 return;
             }
 
+            Log.Write("trigger: cancelled");
+
+            // Flag first. If a transcription is already in flight it owns the session
+            // and will end it; this only tells it to throw the result away.
+            Volatile.Write(ref _sessionCancelled, 1);
+
             _recorder.Cancel();
             HideIndicator();
             _triggers.NotifyRecordingStopped();
 
-            if (_pipeline.CurrentCount == 0) _pipeline.Release();
+            // Idempotent: a no-op when the transcription task still owns the session.
+            EndSession();
         });
     }
+
+    /// <summary>Claims the pipeline for a new dictation, if it is free.</summary>
+    private bool TryBeginSession()
+    {
+        if (Interlocked.CompareExchange(ref _sessionActive, 1, 0) != 0) return false;
+
+        Volatile.Write(ref _sessionCancelled, 0);
+        return true;
+    }
+
+    /// <summary>Releases the pipeline. Safe to call more than once.</summary>
+    private void EndSession() => Interlocked.Exchange(ref _sessionActive, 0);
 
     private void OnTick()
     {
@@ -267,6 +321,5 @@ public sealed class DictationController : IDisposable
         _recorder.Dispose();
         _microphones.Dispose();
         _engine.Dispose();
-        _pipeline.Dispose();
     }
 }
