@@ -147,10 +147,14 @@ public static class TextInjector
         inputs[2] = KeyUp(virtualKey);
         inputs[3] = KeyUp((ushort)Win32Input.VK_LCONTROL);
 
+        // Capture the target BEFORE sending: if the paste changes focus, the after
+        // picture would be misleading about where the keystroke actually went.
+        var target = Win32Window.DescribeWindow(Win32Window.GetForegroundWindow());
+
         var sent = Win32Input.SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Win32Input.Input>());
 
-        var foreground = Win32Window.GetForegroundWindow();
-        Log.Write($"  paste: sent {sent}/4 events, vk=0x{virtualKey:X2}, foreground=0x{foreground:X}");
+        Log.Write($"  paste: sent {sent}/4 events, vk=0x{virtualKey:X2}");
+        Log.Write($"  paste: target {target}");
 
         if (sent != inputs.Length)
         {

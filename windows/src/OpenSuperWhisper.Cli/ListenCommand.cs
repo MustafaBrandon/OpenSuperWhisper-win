@@ -1,4 +1,4 @@
-using OpenSuperWhisper.Core.Audio;
+﻿using OpenSuperWhisper.Core.Audio;
 using OpenSuperWhisper.Core.Input;
 using OpenSuperWhisper.Core.Text;
 using OpenSuperWhisper.Core.Transcription;
@@ -6,7 +6,7 @@ using OpenSuperWhisper.Core.Transcription;
 namespace OpenSuperWhisper.Cli;
 
 /// <summary>
-/// Runs the full dictation loop from a global hotkey — the M3 exit criterion.
+/// Runs the full dictation loop from a global hotkey â€” the M3 exit criterion.
 /// </summary>
 /// <remarks>
 /// The first point at which the app behaves like the product: press the trigger
@@ -17,7 +17,7 @@ internal static class ListenCommand
 {
     public static int Run(string[] args, string modelPath, string vadPath, bool verbose)
     {
-        var mode = GetOption(args, "--trigger") ?? "rightalt";
+        var mode = GetOption(args, "--trigger") ?? "rightctrl";
         var holdToRecord = !args.Contains("--toggle");
         var doubleTap = args.Contains("--double-tap");
 
@@ -68,7 +68,7 @@ internal static class ListenCommand
             {
                 var device = mics.ActiveDevice!.Value;
                 recorder.Start(device);
-                Console.Error.WriteLine($"● recording from {device.Name}");
+                Console.Error.WriteLine($"â— recording from {device.Name}");
             }
             catch (Exception ex)
             {
@@ -80,7 +80,7 @@ internal static class ListenCommand
 
         coordinator.StopRequested += (_, _) =>
         {
-            Console.Error.WriteLine("■ stopped, transcribing...");
+            Console.Error.WriteLine("â–  stopped, transcribing...");
 
             Task.Run(async () =>
             {
@@ -142,7 +142,7 @@ internal static class ListenCommand
 
         coordinator.CancelRequested += (_, _) =>
         {
-            Console.Error.WriteLine("✕ cancelled");
+            Console.Error.WriteLine("âœ• cancelled");
             recorder.Cancel();
             coordinator.NotifyRecordingStopped();
             if (busy.CurrentCount == 0) busy.Release();

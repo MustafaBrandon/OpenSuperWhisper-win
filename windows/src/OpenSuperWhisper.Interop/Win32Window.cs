@@ -13,6 +13,34 @@ public static partial class Win32Window
     [LibraryImport("user32.dll", SetLastError = true)]
     public static partial uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
+    // char[] is not blittable, so LibraryImport cannot marshal it without disabling
+    // runtime marshalling assembly-wide. Pointers keep the source generator happy and
+    // the call unambiguous.
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowTextW", SetLastError = true)]
+    public static unsafe partial int GetWindowText(IntPtr hWnd, char* lpString, int nMaxCount);
+
+    [LibraryImport("user32.dll", EntryPoint = "GetClassNameW", SetLastError = true)]
+    public static unsafe partial int GetClassName(IntPtr hWnd, char* lpClassName, int nMaxCount);
+
+    /// <summary>Title, class and owning process of a window, for diagnostics.</summary>
+    public static unsafe string DescribeWindow(IntPtr hWnd)
+    {
+        if (hWnd == IntPtr.Zero) return "(none)";
+
+        var title = stackalloc char[256];
+        var titleLength = GetWindowText(hWnd, title, 256);
+
+        var className = stackalloc char[256];
+        var classLength = GetClassName(hWnd, className, 256);
+
+        GetWindowThreadProcessId(hWnd, out var processId);
+
+        var name = titleLength > 0 ? new string(title, 0, titleLength) : "(untitled)";
+        var cls = classLength > 0 ? new string(className, 0, classLength) : "?";
+
+        return $"0x{hWnd:X} '{name}' [{cls}] pid={processId}";
+    }
+
     /// <summary>
     /// The keyboard layout of a specific thread, or of the calling thread when 0.
     /// </summary>

@@ -158,16 +158,52 @@ public abstract class LowLevelHook : IDisposable
     }
 
     /// <summary>
+    /// The key or button to withhold from other applications, or 0 for none.
+    /// </summary>
+    /// <remarks>
+    /// A bound trigger must not also reach the focused application. The case that
+    /// forced this: tapping Alt on its own puts a window into menu mode, so the
+    /// paste that follows a dictation goes to the menu bar instead of the text
+    /// field — the transcript is correct, SendInput reports success, and nothing
+    /// appears. Withholding the key avoids that, and equally stops a bound Shift
+    /// from capitalising or a bound button from clicking.
+    /// <para>
+    /// The trade is that the bound key does nothing else while it is bound, which is
+    /// what binding a dedicated trigger means.
+    /// </para>
+    /// </remarks>
+    private volatile uint _suppressedData;
+
+    public uint SuppressedData
+    {
+        get => _suppressedData;
+        set => _suppressedData = value;
+    }
+
+    /// <summary>
     /// Called from the hook callback. Must stay trivially cheap — see the class remarks.
     /// </summary>
-    internal void Enqueue(int message, IntPtr lParam)
+    /// <returns>True to withhold the event from other applications.</returns>
+    internal bool Enqueue(int message, IntPtr lParam)
     {
         var translated = Translate(message, lParam);
-        if (translated is null) return;
+        if (translated is null) return false;
 
         _queue.Enqueue(translated.Value);
         _signal.Set();
+
+        return ShouldSuppress(translated.Value, _suppressedData);
     }
+
+    /// <summary>Whether an event should be withheld from other applications.</summary>
+    /// <remarks>
+    /// Pure so the rule can be tested directly. Two clauses matter beyond the obvious
+    /// match: nothing is withheld when no trigger is bound, and <b>injected events are
+    /// never withheld</b> — our own synthesised paste keystroke has to reach the
+    /// application it is aimed at, and swallowing it would break insertion entirely.
+    /// </remarks>
+    internal static bool ShouldSuppress(HookEvent evt, uint suppressedData) =>
+        !evt.Injected && suppressedData != 0 && evt.Data == suppressedData;
 
     private void ConsumeLoop()
     {
@@ -258,11 +294,13 @@ internal static unsafe class HookDispatcher
                 _ => _mouse,
             };
 
-            hook?.Enqueue(message, lParam);
+            // A non-zero return withholds the event from every application below us in
+            // the chain. Only the bound trigger is ever withheld; everything else is
+            // passed on untouched, because a low-level hook that swallows input
+            // indiscriminately would break the whole desktop.
+            if (hook?.Enqueue(message, lParam) == true) return 1;
         }
 
-        // Always chain. Swallowing input here would make the trigger key unusable in
-        // every other application.
         return Win32Input.CallNextHookEx(IntPtr.Zero, nCode, wParam, lParam);
     }
 }

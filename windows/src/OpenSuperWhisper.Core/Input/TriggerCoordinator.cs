@@ -37,7 +37,17 @@ public sealed class TriggerCoordinator : IDisposable
     private MouseHook? _mouseHook;
 
     private TriggerMode _mode = TriggerMode.ModifierKey;
-    private ModifierKey _modifierKey = ModifierKey.RightAlt;
+
+    /// <summary>
+    /// Default trigger: right Ctrl.
+    /// </summary>
+    /// <remarks>
+    /// Not Alt, deliberately. Alt carries menu-activation semantics on Windows, and
+    /// while suppression now prevents that, right Alt is also AltGr on many layouts —
+    /// binding it would cost those users their accented characters. Right Ctrl has no
+    /// standalone behaviour to lose, and left Ctrl still covers every shortcut.
+    /// </remarks>
+    private ModifierKey _modifierKey = ModifierKey.RightControl;
     private MouseButton _mouseButton = MouseButton.None;
 
     // Auto-repeat suppression. Holding a key produces a stream of WM_KEYDOWN with no
@@ -146,12 +156,23 @@ public sealed class TriggerCoordinator : IDisposable
         // which cancels an in-flight recording.
         _keyboardHook = new KeyboardHook();
         _keyboardHook.Event += OnKeyboardEvent;
+
+        // Withhold the trigger key from other applications. Without this, a bare Alt
+        // tap opens the focused window's menu bar and the paste that follows the
+        // dictation lands in the menu instead of the text field. Escape is never
+        // withheld — it has to keep working everywhere.
+        if (_mode == TriggerMode.ModifierKey && _modifierKey != ModifierKey.None)
+        {
+            _keyboardHook.SuppressedData = (uint)_modifierKey.ToVirtualKey();
+        }
+
         _keyboardHook.Start();
 
         if (_mode == TriggerMode.MouseButton && _mouseButton != MouseButton.None)
         {
             _mouseHook = new MouseHook();
             _mouseHook.Event += OnMouseEvent;
+            _mouseHook.SuppressedData = (uint)_mouseButton;
             _mouseHook.Start();
         }
     }

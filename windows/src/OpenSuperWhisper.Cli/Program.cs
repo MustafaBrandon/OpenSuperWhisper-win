@@ -165,9 +165,13 @@ internal static class Program
               --keep               keep the captured wav instead of deleting it
 
             listen options:
-              --trigger <name>     rightalt (default), leftalt, leftctrl, rightctrl,
+              --trigger <name>     rightctrl (default), leftctrl, leftalt, rightalt,
                                    leftshift, rightshift, leftwin, rightwin,
                                    middle, button4, button5
+
+                                   The bound key is withheld from other apps while
+                                   bound, so it does nothing else. Alt is a poor
+                                   choice: right Alt is AltGr on many layouts.
               --toggle             press to start, press again to stop
                                    (default is hold to record, release to stop)
               --double-tap         require a double tap to start recording

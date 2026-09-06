@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Reflection;
 using System.Windows;
 using H.NotifyIcon;
@@ -42,7 +42,7 @@ public partial class App : Application
         }
 
         Log.Start(AppPaths.Root);
-        Log.Write($"starting — Windows build {Environment.OSVersion.Version.Build}");
+        Log.Write($"starting â€” Windows build {Environment.OSVersion.Version.Build}");
 
         // Rev. 3 sets the floor at Windows 11. Say so rather than failing later in a
         // way that looks like a bug.
@@ -77,6 +77,8 @@ public partial class App : Application
                 new PasteTargetWindow().Show();
                 Log.Write("paste target window opened");
             }
+
+            if (e.Args.Contains("--test-insert")) RunInsertionProbe();
 
             Log.Write("startup complete");
         }
@@ -120,13 +122,46 @@ public partial class App : Application
         Log.Write($"microphone: {microphone?.ToString() ?? "NONE"}");
 
         _controller.Triggers.HoldToRecord = true;
-        _controller.Triggers.UseModifierKey(ModifierKey.RightAlt);
+        _controller.Triggers.UseModifierKey(ModifierKey.RightControl);
         _controller.Start();
-        Log.Write("hooks installed, trigger = RightAlt");
+        Log.Write($"hooks installed, trigger = {_controller.Triggers.Mode} "
+                + $"(suppressed so it cannot reach other apps)");
 
         BuildTray();
         Log.Write("tray icon created");
     }
+
+    /// <summary>
+    /// Runs an insertion under the same conditions as a real dictation.
+    /// </summary>
+    /// <remarks>
+    /// The CLI's `osw insert` proves the mechanism from a separate process, which is
+    /// not the same thing: in the app the call runs on the WPF dispatcher thread while
+    /// the indicator is visible and this process owns the input hooks. Any of those
+    /// could matter, so this reproduces them exactly, without needing speech.
+    /// </remarks>
+    private void RunInsertionProbe()
+    {
+        Log.Write("insertion probe: showing indicator, inserting in 6s");
+
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            // Match the dictation flow: indicator up before the insertion happens.
+            _indicator!.Render(Core.Indicator.IndicatorState.Recording, TimeSpan.FromSeconds(3), false);
+            _indicator.Show();
+            _indicator.MoveToAnchor(Core.Indicator.CaretLocator.MouseAnchor());
+
+            await Task.Delay(TimeSpan.FromSeconds(6));
+
+            Log.Write("insertion probe: inserting now");
+            var outcome = TextInjector.Insert("OSW-INAPP-PROBE", Insertion());
+            Log.Write($"insertion probe: {outcome}");
+
+            _indicator.Hide();
+        });
+    }
+
+    private static InsertionOptions Insertion() => new(Paste: true, CopyToClipboard: false);
 
     private void BuildTray()
     {
@@ -134,7 +169,7 @@ public partial class App : Application
 
         var status = new System.Windows.Controls.MenuItem
         {
-            Header = "Hold Right Alt to dictate",
+            Header = "Hold Right Ctrl to dictate",
             IsEnabled = false,
         };
         menu.Items.Add(status);
@@ -149,7 +184,7 @@ public partial class App : Application
 
         _tray = new TaskbarIcon
         {
-            ToolTipText = "OpenSuperWhisper — hold Right Alt to dictate",
+            ToolTipText = "OpenSuperWhisper â€” Hold Right Ctrl to dictate",
             ContextMenu = menu,
             Icon = System.Drawing.SystemIcons.Application,
         };
