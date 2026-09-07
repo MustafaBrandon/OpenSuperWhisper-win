@@ -6,6 +6,8 @@ using OpenSuperWhisper.Core;
 using OpenSuperWhisper.Core.Audio;
 using OpenSuperWhisper.Core.Diagnostics;
 using OpenSuperWhisper.Core.Input;
+using OpenSuperWhisper.Core.Models;
+using OpenSuperWhisper.Core.Settings;
 using OpenSuperWhisper.Core.Text;
 
 namespace OpenSuperWhisper.App;
@@ -26,6 +28,31 @@ public partial class App : Application
     private TaskbarIcon? _tray;
     private IndicatorWindow? _indicator;
     private DictationController? _controller;
+    private SettingsStore? _settings;
+    private ModelManager? _models;
+
+    /// <summary>
+    /// The model to load: the user's choice when it still exists, otherwise the bundled
+    /// one.
+    /// </summary>
+    /// <remarks>
+    /// The fallback matters — a model can be deleted between sessions, and starting with
+    /// no working engine is a much worse outcome than silently reverting to tiny.en.
+    /// </remarks>
+    private string ResolveModelPath()
+    {
+        var chosen = _settings!.Current.SelectedWhisperModelPath;
+
+        if (!string.IsNullOrWhiteSpace(chosen) && File.Exists(chosen)) return chosen;
+
+        if (!string.IsNullOrWhiteSpace(chosen))
+        {
+            Log.Write($"selected model missing ({chosen}), falling back to the bundled model");
+        }
+
+        var bundled = _models!.PathFor(ModelCatalog.BundledModelFilename);
+        return File.Exists(bundled) ? bundled : Meta("BundledModelPath");
+    }
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -99,7 +126,16 @@ public partial class App : Application
 
         Interop.WhisperNative.SilenceNativeLogging();
 
-        var modelPath = Meta("BundledModelPath");
+        _settings = new SettingsStore();
+        Log.Write($"settings: {_settings.Path}");
+
+        // Install the bundled model if the models directory does not have it. Checked
+        // every launch, not just the first: a user who clears that directory would
+        // otherwise be left with an app that cannot transcribe at all.
+        _models = new ModelManager();
+        _models.EnsureBundledModelPresent(Meta("BundledModelPath"));
+
+        var modelPath = ResolveModelPath();
         var vadPath = Meta("VadModelPath");
         Log.Write($"model: {modelPath} (exists: {File.Exists(modelPath)})");
         Log.Write($"vad:   {vadPath} (exists: {File.Exists(vadPath)})");
@@ -112,17 +148,21 @@ public partial class App : Application
         _indicator.Hide();
         Log.Write("indicator window created");
 
-        _controller = new DictationController(Dispatcher, _indicator, modelPath, vadPath)
-        {
-            Insertion = new InsertionOptions(Paste: true, CopyToClipboard: false),
-        };
+        _controller = new DictationController(Dispatcher, _indicator, modelPath, vadPath);
         Log.Write("engine loaded");
 
         var microphone = _controller.Microphones.ActiveDevice;
         Log.Write($"microphone: {microphone?.ToString() ?? "NONE"}");
 
-        _controller.Triggers.HoldToRecord = true;
-        _controller.Triggers.UseModifierKey(ModifierKey.RightControl);
+        // Bind the trigger explicitly once, then let ApplySettings handle later edits —
+        // it only rebinds when the binding actually changed, to avoid reinstalling
+        // hooks on every unrelated preference change.
+        _controller.ApplyTriggerBinding(_settings.Current);
+        _controller.ApplySettings(_settings.Current);
+
+        // A settings edit takes effect immediately rather than at next launch.
+        _settings.Changed += (_, updated) => Dispatcher.Invoke(() => _controller.ApplySettings(updated));
+
         _controller.Start();
         Log.Write($"hooks installed, trigger = {_controller.Triggers.Mode} "
                 + $"(suppressed so it cannot reach other apps)");
@@ -154,14 +194,14 @@ public partial class App : Application
             await Task.Delay(TimeSpan.FromSeconds(6));
 
             Log.Write("insertion probe: inserting now");
-            var outcome = TextInjector.Insert("OSW-INAPP-PROBE", Insertion());
+            var outcome = TextInjector.Insert("OSW-INAPP-PROBE", new InsertionOptions());
             Log.Write($"insertion probe: {outcome}");
 
             _indicator.Hide();
         });
     }
 
-    private static InsertionOptions Insertion() => new(Paste: true, CopyToClipboard: false);
+
 
     private void BuildTray()
     {

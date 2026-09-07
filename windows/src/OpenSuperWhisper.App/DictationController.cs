@@ -1,9 +1,10 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows.Threading;
 using OpenSuperWhisper.Core.Audio;
 using OpenSuperWhisper.Core.Diagnostics;
 using OpenSuperWhisper.Core.Indicator;
 using OpenSuperWhisper.Core.Input;
+using OpenSuperWhisper.Core.Settings;
 using OpenSuperWhisper.Core.Text;
 using OpenSuperWhisper.Core.Transcription;
 
@@ -40,7 +41,7 @@ public sealed class DictationController : IDisposable
     /// throws or over-releases and later permits two concurrent recordings.
     /// <para>
     /// Interlocked claim and release makes ownership unambiguous and ending a session
-    /// idempotent — whoever gets there first wins, everyone else is a no-op.
+    /// idempotent â€” whoever gets there first wins, everyone else is a no-op.
     /// </para>
     /// </remarks>
     private int _sessionActive;
@@ -57,7 +58,80 @@ public sealed class DictationController : IDisposable
 
     private bool _disposed;
 
-    public InsertionOptions Insertion { get; set; } = new();
+    private AppSettings _settings = new();
+
+    /// <summary>
+    /// Applies user settings to every layer that consumes them.
+    /// </summary>
+    /// <remarks>
+    /// Called at startup and whenever settings change, so an edit takes effect without
+    /// a restart. Trigger rebinding tears down and reinstalls the hooks, which is why
+    /// it only happens when the binding actually changed.
+    /// </remarks>
+    public void ApplySettings(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+
+        var previous = _settings;
+        _settings = settings;
+
+        _triggers.HoldToRecord = settings.HoldToRecord;
+        _triggers.DoublePressToTrigger = settings.DoublePressToTrigger;
+
+        if (settings.SelectedMicrophoneId != previous.SelectedMicrophoneId
+            || _microphones.PreferredDeviceId != settings.SelectedMicrophoneId)
+        {
+            _microphones.SetPreferredDevice(settings.SelectedMicrophoneId);
+        }
+
+        // Rebinding reinstalls both hooks, so avoid it unless the binding moved.
+        var bindingChanged = previous.ModifierOnlyHotkey != settings.ModifierOnlyHotkey
+            || previous.MouseButtonHotkey != settings.MouseButtonHotkey;
+
+        if (bindingChanged) ApplyTriggerBinding(settings);
+
+        Log.Write($"settings applied: trigger={settings.ModifierOnlyHotkey}/{settings.MouseButtonHotkey}, "
+                + $"hold={settings.HoldToRecord}, paste={settings.AutoPasteTranscription}, "
+                + $"language={settings.WhisperLanguage}");
+    }
+
+    /// <summary>Binds the trigger, with mouse button taking precedence over modifier.</summary>
+    public void ApplyTriggerBinding(AppSettings settings)
+    {
+        if (Enum.TryParse<MouseButton>(settings.MouseButtonHotkey, out var button)
+            && button != MouseButton.None)
+        {
+            _triggers.UseMouseButton(button);
+            return;
+        }
+
+        var key = Enum.TryParse<ModifierKey>(settings.ModifierOnlyHotkey, out var parsed)
+            && parsed != ModifierKey.None
+                ? parsed
+                : ModifierKey.RightControl;
+
+        _triggers.UseModifierKey(key);
+    }
+
+    private InsertionOptions Insertion => new(
+        Paste: _settings.AutoPasteTranscription,
+        CopyToClipboard: _settings.AutoCopyToClipboard,
+        Method: _settings.UseUnicodeTyping
+            ? InsertionMethod.UnicodeTyping
+            : InsertionMethod.ClipboardPaste,
+        AddTrailingSpace: _settings.AddSpaceAfterSentence);
+
+    private TranscriptionSettings Transcription => new()
+    {
+        Language = _settings.WhisperLanguage,
+        SuppressBlankAudio = _settings.SuppressBlankAudio,
+        ShowTimestamps = _settings.ShowTimestamps,
+        Temperature = (float)_settings.Temperature,
+        NoSpeechThreshold = (float)_settings.NoSpeechThreshold,
+        InitialPrompt = _settings.InitialPrompt,
+        UseBeamSearch = _settings.UseBeamSearch,
+        BeamSize = _settings.BeamSize,
+    };
 
     /// <summary>Raised with each finished transcript, for the history and the tray.</summary>
     public event EventHandler<string>? Transcribed;
@@ -187,7 +261,7 @@ public sealed class DictationController : IDisposable
             try
             {
                 var samples = AudioDecoder.DecodeToWhisperFormat(wav);
-                var text = _engine.Transcribe(samples);
+                var text = _engine.Transcribe(samples, Transcription);
 
                 if (string.IsNullOrEmpty(text))
                 {
