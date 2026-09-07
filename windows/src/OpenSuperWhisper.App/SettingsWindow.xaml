@@ -188,10 +188,13 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Text="Application" Style="{StaticResource SectionHeading}" />
+                        <TextBlock Text="History" Style="{StaticResource SectionHeading}" />
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <CheckBox x:Name="StartHiddenCheck" Content="Start hidden in the notification area" />
+                                <CheckBox x:Name="SaveHistoryCheck" Content="Keep a history of transcripts and audio" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Turned off, nothing is written at all — no transcript is stored and the recorded audio is deleted after it has been transcribed. Existing entries are kept until you remove them below." />
+
                                 <CheckBox x:Name="AutoDeleteCheck" Content="Delete old recordings automatically" />
                                 <Grid Margin="24,0,0,8">
                                     <Grid.ColumnDefinitions>
@@ -201,7 +204,23 @@
                                     <TextBlock Text="After" Style="{StaticResource FieldLabel}" />
                                     <TextBox x:Name="RetentionDaysBox" Grid.Column="1" Width="60" Height="24" />
                                 </Grid>
-                                <TextBlock Style="{StaticResource Hint}" Text="Days to keep recordings before removing them." />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Days to keep recordings. Applied when the app starts." />
+
+                                <TextBlock x:Name="HistoryCountText" Style="{StaticResource Hint}" Margin="0,4,0,6" />
+                                <StackPanel Orientation="Horizontal">
+                                    <Button x:Name="OpenHistoryButton" Content="Open history" Height="28"
+                                            Padding="12,0" Margin="0,0,8,0" Click="OnOpenHistory" />
+                                    <Button x:Name="ClearHistoryButton" Content="Clear all history" Height="28"
+                                            Padding="12,0" Click="OnClearHistory" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Application" Style="{StaticResource SectionHeading}" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <CheckBox x:Name="StartHiddenCheck" Content="Start hidden in the notification area" />
                             </StackPanel>
                         </Border>
 

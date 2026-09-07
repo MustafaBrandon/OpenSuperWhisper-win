@@ -1,7 +1,9 @@
 ﻿using System.IO;
 using System.Windows.Threading;
+using OpenSuperWhisper.Core;
 using OpenSuperWhisper.Core.Audio;
 using OpenSuperWhisper.Core.Diagnostics;
+using OpenSuperWhisper.Core.History;
 using OpenSuperWhisper.Core.Indicator;
 using OpenSuperWhisper.Core.Input;
 using OpenSuperWhisper.Core.Settings;
@@ -28,6 +30,7 @@ public sealed class DictationController : IDisposable
     private readonly AudioRecorder _recorder = new();
     private readonly TriggerCoordinator _triggers = new();
     private readonly WhisperEngine _engine;
+    private readonly RecordingStore? _history;
     private readonly DispatcherTimer _tick;
 
     /// <summary>
@@ -137,8 +140,9 @@ public sealed class DictationController : IDisposable
     public event EventHandler<string>? Transcribed;
 
     public DictationController(Dispatcher dispatcher, IndicatorWindow indicator,
-        string modelPath, string vadModelPath)
+        string modelPath, string vadModelPath, RecordingStore? history = null)
     {
+        _history = history;
         _dispatcher = dispatcher;
         _indicator = indicator;
         _microphones = new MicrophoneService();
@@ -271,6 +275,10 @@ public sealed class DictationController : IDisposable
 
                 Log.Write($"  transcript: {text}");
 
+                // Store before inserting: if insertion fails the transcript is still
+                // recoverable from history, which is the whole point of keeping it.
+                StoreIfEnabled(text, wav);
+
                 // Escape cannot un-run whisper, but it must stop the result landing in
                 // the user's document. Checked here rather than earlier because the
                 // cancel can arrive at any point during the decode.
@@ -297,7 +305,7 @@ public sealed class DictationController : IDisposable
             }
             finally
             {
-                try { File.Delete(wav); } catch (IOException) { }
+                if (File.Exists(wav)) { try { File.Delete(wav); } catch (IOException) { } }
             }
         }
         catch (Exception ex)
@@ -338,6 +346,86 @@ public sealed class DictationController : IDisposable
             // Idempotent: a no-op when the transcription task still owns the session.
             EndSession();
         });
+    }
+
+    /// <summary>
+    /// Records a transcript and its audio, when history is enabled.
+    /// </summary>
+    /// <remarks>
+    /// With history off, nothing is written at all — no row, and the audio is left for
+    /// the caller to delete. "Off" has to mean not recorded, not recorded-and-hidden,
+    /// or the setting is worthless to anyone who turns it off for privacy.
+    /// <para>
+    /// The audio is <i>moved</i> rather than copied: it is our own temp capture, and
+    /// duplicating a recording to leave a copy in the temp directory would be wasteful
+    /// and would defeat the sweeper.
+    /// </para>
+    /// </remarks>
+    private void StoreIfEnabled(string transcript, string wavPath)
+    {
+        if (!_settings.SaveTranscriptionHistory) return;
+        if (_history is null) return;
+
+        try
+        {
+            var duration = 0.0;
+            try
+            {
+                duration = AudioDecoder.DecodeToWhisperFormat(wavPath).Length
+                    / (double)AudioDecoder.WhisperSampleRate;
+            }
+            catch (Exception)
+            {
+                // A missing duration is cosmetic; it must not cost the transcript.
+            }
+
+            var recording = Recording.ForDictation(transcript, duration);
+
+            Directory.CreateDirectory(AppPaths.Recordings);
+            File.Move(wavPath, recording.AudioPath, overwrite: true);
+
+            _history.Add(recording);
+            Log.Write($"  stored as {recording.FileName}");
+        }
+        catch (Exception ex)
+        {
+            Log.Error("could not store the recording", ex);
+        }
+    }
+
+    /// <summary>
+    /// Transcribes an audio file dropped by the user.
+    /// </summary>
+    /// <remarks>
+    /// Shares the session flag with dictation, so a dropped file cannot decode while a
+    /// recording is transcribing — one whisper context cannot serve both, and letting
+    /// them overlap would corrupt each other's decoding state.
+    /// <para>
+    /// The file is only read. Unlike our own captures it is never moved or deleted:
+    /// it belongs to the user and stays where they put it.
+    /// </para>
+    /// </remarks>
+    public async Task<string> TranscribeFileAsync(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        if (!File.Exists(path)) throw new FileNotFoundException("Audio file not found.", path);
+
+        // Wait rather than refuse: the user explicitly asked for this file, and a
+        // silent "busy" would look like the drop did nothing.
+        while (!TryBeginSession()) await Task.Delay(200).ConfigureAwait(false);
+
+        try
+        {
+            return await Task.Run(() =>
+            {
+                var samples = AudioDecoder.DecodeToWhisperFormat(path);
+                return _engine.Transcribe(samples, Transcription);
+            }).ConfigureAwait(false);
+        }
+        finally
+        {
+            EndSession();
+        }
     }
 
     /// <summary>Claims the pipeline for a new dictation, if it is free.</summary>

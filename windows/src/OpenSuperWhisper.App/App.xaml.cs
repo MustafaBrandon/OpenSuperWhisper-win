@@ -5,6 +5,7 @@ using H.NotifyIcon;
 using OpenSuperWhisper.Core;
 using OpenSuperWhisper.Core.Audio;
 using OpenSuperWhisper.Core.Diagnostics;
+using OpenSuperWhisper.Core.History;
 using OpenSuperWhisper.Core.Input;
 using OpenSuperWhisper.Core.Models;
 using OpenSuperWhisper.Core.Settings;
@@ -30,6 +31,7 @@ public partial class App : Application
     private DictationController? _controller;
     private SettingsStore? _settings;
     private ModelManager? _models;
+    private RecordingStore? _history;
 
     /// <summary>
     /// The model to load: the user's choice when it still exists, otherwise the bundled
@@ -111,6 +113,7 @@ public partial class App : Application
             // new tray icons in the overflow flyout, so the menu that reaches this
             // dialog can be genuinely hard to find.
             if (e.Args.Contains("--settings")) ShowSettings();
+            if (e.Args.Contains("--history")) ShowHistory();
 
             Log.Write("startup complete");
         }
@@ -153,7 +156,10 @@ public partial class App : Application
         _indicator.Hide();
         Log.Write("indicator window created");
 
-        _controller = new DictationController(Dispatcher, _indicator, modelPath, vadPath);
+        _history = new RecordingStore();
+        ApplyRetention();
+
+        _controller = new DictationController(Dispatcher, _indicator, modelPath, vadPath, _history);
         Log.Write("engine loaded");
 
         var microphone = _controller.Microphones.ActiveDevice;
@@ -221,6 +227,10 @@ public partial class App : Application
         menu.Items.Add(new System.Windows.Controls.Separator());
 
         menu.Items.Add(BuildMicrophoneMenu());
+        var history = new System.Windows.Controls.MenuItem { Header = "History…" };
+        history.Click += (_, _) => ShowHistory();
+        menu.Items.Add(history);
+
 
         var settings = new System.Windows.Controls.MenuItem { Header = "Settings…" };
         settings.Click += (_, _) => ShowSettings();
@@ -242,6 +252,40 @@ public partial class App : Application
         _tray.ForceCreate();
     }
 
+    /// <summary>Removes recordings past the retention window, when retention is on.</summary>
+    /// <remarks>
+    /// Runs at startup rather than on a timer: a dictation tool is often left running
+    /// for days, but it is also restarted often enough for this to be timely, and a
+    /// background deleter is a surprising thing to have running against your own data.
+    /// </remarks>
+    private void ApplyRetention()
+    {
+        var settings = _settings!.Current;
+        if (!settings.AutoDeleteRecordingsEnabled) return;
+
+        var cutoff = RetentionPolicy.CutoffDate(settings.AutoDeleteRecordingsAfterDays, DateTimeOffset.Now);
+        if (cutoff is null) return;
+
+        var removed = _history!.DeleteOlderThan(cutoff.Value);
+        if (removed > 0) Log.Write($"retention removed {removed} recording(s) older than {cutoff:d}");
+    }    private HistoryWindow? _historyWindow;
+
+    /// <summary>Opens history, or focuses it if already open.</summary>
+    private void ShowHistory()
+    {
+        if (_historyWindow is { IsLoaded: true })
+        {
+            _historyWindow.Activate();
+            return;
+        }
+
+        _historyWindow = new HistoryWindow(_history!, _settings!, _controller!.TranscribeFileAsync);
+        _historyWindow.Closed += (_, _) => _historyWindow = null;
+        _historyWindow.Show();
+        _historyWindow.Activate();
+    }
+
+
     private SettingsWindow? _settingsWindow;
 
     /// <summary>Opens settings, or focuses the window if it is already open.</summary>
@@ -261,7 +305,8 @@ public partial class App : Application
         // showing in a settings dialog is worse than a moment's delay.
         _ = Task.Run(() => _controller!.Microphones.Refresh());
 
-        _settingsWindow = new SettingsWindow(_settings!, _models!, _controller!.Microphones);
+        _settingsWindow = new SettingsWindow(_settings!, _models!, _controller!.Microphones, _history);
+        _settingsWindow.OpenHistoryRequested += (_, _) => ShowHistory();
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
         _settingsWindow.Activate();

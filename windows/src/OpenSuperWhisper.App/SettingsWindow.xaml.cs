@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using OpenSuperWhisper.Core;
 using OpenSuperWhisper.Core.Audio;
 using OpenSuperWhisper.Core.Diagnostics;
+using OpenSuperWhisper.Core.History;
 using OpenSuperWhisper.Core.Input;
 using OpenSuperWhisper.Core.Models;
 using OpenSuperWhisper.Core.Settings;
@@ -24,13 +25,17 @@ public partial class SettingsWindow : Window
     private readonly SettingsStore _store;
     private readonly ModelManager _models;
     private readonly MicrophoneService _microphones;
+    private readonly RecordingStore? _history;
     private readonly AppSettings _draft;
 
     private readonly Dictionary<string, CancellationTokenSource> _downloads = [];
 
-    public SettingsWindow(SettingsStore store, ModelManager models, MicrophoneService microphones)
+    public SettingsWindow(SettingsStore store, ModelManager models, MicrophoneService microphones,
+        RecordingStore? history = null)
     {
         InitializeComponent();
+
+        _history = history;
 
         _store = store;
         _models = models;
@@ -90,8 +95,57 @@ public partial class SettingsWindow : Window
         TimestampsCheck.IsChecked = _draft.ShowTimestamps;
 
         StartHiddenCheck.IsChecked = _draft.StartHiddenInTray;
+        SaveHistoryCheck.IsChecked = _draft.SaveTranscriptionHistory;
         AutoDeleteCheck.IsChecked = _draft.AutoDeleteRecordingsEnabled;
         RetentionDaysBox.Text = _draft.AutoDeleteRecordingsAfterDays.ToString();
+
+        UpdateHistoryCount();
+    }
+
+    private void UpdateHistoryCount()
+    {
+        if (_history is null)
+        {
+            HistoryCountText.Text = string.Empty;
+            ClearHistoryButton.IsEnabled = false;
+            OpenHistoryButton.IsEnabled = false;
+            return;
+        }
+
+        var count = _history.Count();
+
+        HistoryCountText.Text = count == 0
+            ? "No recordings stored."
+            : $"{count} recording{(count == 1 ? string.Empty : "s")} stored in {AppPaths.Recordings}";
+
+        ClearHistoryButton.IsEnabled = count > 0;
+    }
+
+    private void OnOpenHistory(object sender, RoutedEventArgs e) => OpenHistoryRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>Raised when the user asks to see history, so the app can own that window.</summary>
+    public event EventHandler? OpenHistoryRequested;
+
+    private void OnClearHistory(object sender, RoutedEventArgs e)
+    {
+        if (_history is null) return;
+
+        var count = _history.Count();
+
+        var confirm = MessageBox.Show(
+            $"Delete all {count} recording(s) and their audio?\n\nThis cannot be undone.",
+            "Clear history", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+
+        if (confirm != MessageBoxResult.OK) return;
+
+        // Acts immediately rather than on Save. Deleting data is not a preference, and
+        // making it wait for Save would leave "Cancel" ambiguous about whether the
+        // deletion happened.
+        var removed = _history.DeleteAll();
+        Log.Write($"history cleared from settings: {removed} recording(s) removed");
+
+        UpdateHistoryCount();
+        StatusText.Text = $"Removed {removed} recording(s).";
     }
 
     private void SelectTrigger()
@@ -449,6 +503,7 @@ public partial class SettingsWindow : Window
         _draft.ShowTimestamps = TimestampsCheck.IsChecked == true;
 
         _draft.StartHiddenInTray = StartHiddenCheck.IsChecked == true;
+        _draft.SaveTranscriptionHistory = SaveHistoryCheck.IsChecked == true;
         _draft.AutoDeleteRecordingsEnabled = AutoDeleteCheck.IsChecked == true;
 
         // Clamp rather than reject: a nonsensical retention value should not block

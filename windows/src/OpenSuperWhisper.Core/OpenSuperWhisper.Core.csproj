@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <RootNamespace>OpenSuperWhisper.Core</RootNamespace>
@@ -12,6 +12,18 @@
   <ItemGroup>
     <!-- WASAPI capture, device enumeration, and Media Foundation decoding. -->
     <PackageReference Include="NAudio" Version="2.2.1" />
+
+    <!-- Recording history. Replaces the mac app's GRDB store. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
+
+    <!--
+      Pinned above the version Microsoft.Data.Sqlite pulls in. Its transitive
+      SQLitePCLRaw 2.1.11 carries GHSA-2m69-gcr7-jv3q, a high-severity advisory in
+      the bundled SQLite. This overrides it with a patched build; drop the pin once
+      Microsoft.Data.Sqlite ships one by default.
+    -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.13" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
   </ItemGroup>
 
   <ItemGroup>
