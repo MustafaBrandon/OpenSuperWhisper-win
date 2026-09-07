@@ -1,4 +1,4 @@
-using OpenSuperWhisper.Interop;
+﻿using OpenSuperWhisper.Interop;
 
 namespace OpenSuperWhisper.Core.Input;
 
@@ -7,7 +7,7 @@ namespace OpenSuperWhisper.Core.Input;
 /// </summary>
 /// <remarks>
 /// Mirrors the mac app's <c>ModifierKey</c>, mapped to Windows: Command becomes
-/// Windows key, Option becomes Alt. <c>Fn</c> is dropped — Windows keyboards handle
+/// Windows key, Option becomes Alt. <c>Fn</c> is dropped â€” Windows keyboards handle
 /// it in firmware and it never reaches a hook.
 /// </remarks>
 public enum ModifierKey
@@ -31,7 +31,7 @@ public enum MouseButton
     Button5,
 }
 
-public static class InputBindings
+public static class TriggerBindings
 {
     public static int ToVirtualKey(this ModifierKey key) => key switch
     {

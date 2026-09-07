@@ -107,6 +107,11 @@ public partial class App : Application
 
             if (e.Args.Contains("--test-insert")) RunInsertionProbe();
 
+            // Opening settings directly matters more than it looks: Windows 11 hides
+            // new tray icons in the overflow flyout, so the menu that reaches this
+            // dialog can be genuinely hard to find.
+            if (e.Args.Contains("--settings")) ShowSettings();
+
             Log.Write("startup complete");
         }
         catch (Exception ex)
@@ -216,6 +221,11 @@ public partial class App : Application
         menu.Items.Add(new System.Windows.Controls.Separator());
 
         menu.Items.Add(BuildMicrophoneMenu());
+
+        var settings = new System.Windows.Controls.MenuItem { Header = "Settings…" };
+        settings.Click += (_, _) => ShowSettings();
+        menu.Items.Add(settings);
+
         menu.Items.Add(new System.Windows.Controls.Separator());
 
         var quit = new System.Windows.Controls.MenuItem { Header = "Quit" };
@@ -230,6 +240,31 @@ public partial class App : Application
         };
 
         _tray.ForceCreate();
+    }
+
+    private SettingsWindow? _settingsWindow;
+
+    /// <summary>Opens settings, or focuses the window if it is already open.</summary>
+    /// <remarks>
+    /// Two settings windows would each hold their own draft, and whichever saved last
+    /// would silently discard the other's edits.
+    /// </remarks>
+    private void ShowSettings()
+    {
+        if (_settingsWindow is { IsLoaded: true })
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+
+        // Refresh devices first: the list is cached, and an unplugged microphone still
+        // showing in a settings dialog is worse than a moment's delay.
+        _ = Task.Run(() => _controller!.Microphones.Refresh());
+
+        _settingsWindow = new SettingsWindow(_settings!, _models!, _controller!.Microphones);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
     }
 
     private System.Windows.Controls.MenuItem BuildMicrophoneMenu()

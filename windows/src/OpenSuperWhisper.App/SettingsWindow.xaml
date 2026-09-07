@@ -1,0 +1,224 @@
+<Window x:Class="OpenSuperWhisper.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OpenSuperWhisper Settings"
+        Width="720" Height="640"
+        MinWidth="640" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        Background="#FFF7F7F9">
+
+    <Window.Resources>
+        <Style TargetType="TextBlock" x:Key="SectionHeading">
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,20,0,8" />
+            <Setter Property="Foreground" Value="#FF1A1A1E" />
+        </Style>
+
+        <Style TargetType="TextBlock" x:Key="FieldLabel">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="Foreground" Value="#FF3A3A42" />
+        </Style>
+
+        <Style TargetType="TextBlock" x:Key="Hint">
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="#FF6B6B76" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,2,0,10" />
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+
+        <Style TargetType="Border" x:Key="Card">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#FFE2E2E8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- Actions pinned to the bottom so they never scroll out of reach. -->
+        <Border DockPanel.Dock="Bottom" Background="#FFEFEFF3" BorderBrush="#FFE2E2E8"
+                BorderThickness="0,1,0,0" Padding="16,12">
+            <DockPanel>
+                <TextBlock x:Name="StatusText" DockPanel.Dock="Left" VerticalAlignment="Center"
+                           Foreground="#FF6B6B76" FontSize="12" TextTrimming="CharacterEllipsis" />
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="CancelButton" Content="Cancel" Width="90" Height="30"
+                            Margin="0,0,8,0" Click="OnCancel" IsCancel="True" />
+                    <Button x:Name="SaveButton" Content="Save" Width="90" Height="30"
+                            Click="OnSave" IsDefault="True" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <TabControl Margin="12" Background="Transparent" BorderThickness="0">
+
+            <!-- ============================ Dictation ============================ -->
+            <TabItem Header="Dictation">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4,0,12,0">
+                    <StackPanel>
+                        <TextBlock Text="Trigger" Style="{StaticResource SectionHeading}" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,4">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Key or button" Style="{StaticResource FieldLabel}" />
+                                    <ComboBox x:Name="TriggerCombo" Grid.Column="1" Height="28" />
+                                </Grid>
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="While bound, this key does nothing else — it is withheld from other applications so it cannot open menus or type. Left Ctrl still works for shortcuts." />
+
+                                <CheckBox x:Name="HoldToRecordCheck" Content="Hold to record, release to stop" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="A quick tap still starts recording; press again to stop. Unchecked means press to start, press again to stop." />
+
+                                <CheckBox x:Name="DoubleTapCheck" Content="Require a double tap to start" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Reduces accidental triggers. Stopping is always a single press." />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Microphone" Style="{StaticResource SectionHeading}" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <ComboBox x:Name="MicrophoneCombo" Height="28" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Remembered by device, so unplugging and reconnecting keeps your choice." />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="While recording" Style="{StaticResource SectionHeading}" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <CheckBox x:Name="PlaySoundCheck" Content="Play a sound when recording starts" />
+                                <CheckBox x:Name="EscNoConfirmCheck" Content="Esc discards immediately, without confirming" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="By default, recordings longer than 10 seconds ask for a second Esc before being discarded." />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============================ Output ============================ -->
+            <TabItem Header="Output">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4,0,12,0">
+                    <StackPanel>
+                        <TextBlock Text="Where the text goes" Style="{StaticResource SectionHeading}" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <CheckBox x:Name="AutoPasteCheck" Content="Insert into the focused application" />
+                                <CheckBox x:Name="AutoCopyCheck" Content="Leave the transcript on the clipboard" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="With this off, whatever was on your clipboard before is restored a moment after pasting. With both off, transcripts are only recorded, not inserted." />
+
+                                <CheckBox x:Name="UnicodeTypingCheck" Content="Type the text instead of pasting" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Never touches the clipboard, but is slower for long text and unreliable in some applications, particularly terminals." />
+
+                                <CheckBox x:Name="TrailingSpaceCheck" Content="Add a space after trailing punctuation" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============================ Model ============================ -->
+            <TabItem Header="Model">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4,0,12,0">
+                    <StackPanel>
+                        <TextBlock Text="Active model" Style="{StaticResource SectionHeading}" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <ComboBox x:Name="ActiveModelCombo" Height="28" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Larger models are markedly more accurate and slower. The bundled Tiny model is fast but weak." />
+
+                                <Grid Margin="0,8,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Language" Style="{StaticResource FieldLabel}" />
+                                    <ComboBox x:Name="LanguageCombo" Grid.Column="1" Height="28" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Available to download" Style="{StaticResource SectionHeading}" />
+                        <ItemsControl x:Name="ModelList" />
+
+                        <TextBlock x:Name="DiskSpaceText" Style="{StaticResource Hint}" Margin="0,8,0,0" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ============================ Advanced ============================ -->
+            <TabItem Header="Advanced">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="4,0,12,0">
+                    <StackPanel>
+                        <TextBlock Text="Decoding" Style="{StaticResource SectionHeading}" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <CheckBox x:Name="BeamSearchCheck" Content="Use beam search" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Slower, occasionally more accurate on difficult audio." />
+
+                                <TextBlock Text="Vocabulary hint" Margin="0,8,0,4" />
+                                <TextBox x:Name="InitialPromptBox" Height="60" AcceptsReturn="True"
+                                         TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Names, jargon or spellings you use often. Helps the model get them right." />
+
+                                <CheckBox x:Name="AsianAutocorrectCheck"
+                                          Content="Asian text autocorrect (spacing for Chinese, Japanese, Korean)" />
+                                <CheckBox x:Name="TimestampsCheck" Content="Include timestamps in the transcript" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Disables silence trimming, since trimming would make the timestamps wrong." />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Application" Style="{StaticResource SectionHeading}" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <CheckBox x:Name="StartHiddenCheck" Content="Start hidden in the notification area" />
+                                <CheckBox x:Name="AutoDeleteCheck" Content="Delete old recordings automatically" />
+                                <Grid Margin="24,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="After" Style="{StaticResource FieldLabel}" />
+                                    <TextBox x:Name="RetentionDaysBox" Grid.Column="1" Width="60" Height="24" />
+                                </Grid>
+                                <TextBlock Style="{StaticResource Hint}" Text="Days to keep recordings before removing them." />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="Files" Style="{StaticResource SectionHeading}" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock x:Name="PathsText" Style="{StaticResource Hint}" Margin="0" />
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="Open data folder" Height="28" Padding="12,0"
+                                            Margin="0,0,8,0" Click="OnOpenDataFolder" />
+                                    <Button Content="Open log" Height="28" Padding="12,0" Click="OnOpenLog" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>
