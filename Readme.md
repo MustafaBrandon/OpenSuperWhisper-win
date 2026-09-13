@@ -1,78 +1,115 @@
-# OpenSuperWhisper
+# OpenSuperWhisper for Windows
 
-OpenSuperWhisper is a macOS application that provides real-time audio transcription using the Whisper model. It offers a seamless way to record and transcribe audio with customizable settings and keyboard shortcuts.
+Hold a key, speak, let go — what you said is transcribed and typed into whatever
+application you were working in: an email, a terminal, a chat box. Transcription runs
+entirely on your own machine.
 
-<p align="center">
-<img src="docs/image.png" width="400" /> <img src="docs/image_indicator.png" width="400" />
-</p>
+This is a fork of [Starmel/OpenSuperWhisper](https://github.com/Starmel/OpenSuperWhisper)
+that adds a **native Windows client**. It shares the macOS app's engine and its
+behaviour, but not its code — SwiftUI and AppKit have no Windows counterpart, so
+everything that touches the operating system is written fresh against Win32. What
+carries over, what was rewritten, and why, is documented in
+[`docs/windows-port.md`](docs/windows-port.md).
 
-## Features
+**The Windows client lives in [`windows/`](windows/).** The macOS sources in this tree
+are upstream's, kept as a reference for the port; they are not built here.
 
-- 🎙️ Real-time audio recording and transcription
-- 🧠 Two transcription engines: [Whisper](https://github.com/ggerganov/whisper.cpp) and [Parakeet](https://github.com/AntinomyCollective/FluidAudio) — download models directly from the app
-- ⌨️ Global keyboard shortcuts — key combination or single modifier key (e.g. Left ⌘, Right ⌥, Fn)
-- 🖱️ Mouse button trigger — bind the middle or an extra (thumb) mouse button to start/stop recording
-- ✊ Hold-to-record mode — hold the shortcut, modifier key or mouse button to record, release to stop
-- 📁 Drag & drop audio files for transcription with queue processing
-- 🎤 Microphone selection — switch between built-in, external, Bluetooth and iPhone (Apple Continuity) mics from the menu bar
-- 🌍 Support for multiple languages with auto-detection
-- 🇯🇵🇨🇳🇰🇷 Asian language autocorrect ([autocorrect](https://github.com/huacnlee/autocorrect))
+## Status
 
-## Installation
+Pre-1.0 and **not code-signed**. The dictation loop is complete and verified on real
+hardware: trigger, capture, transcription, and insertion into other applications, with
+settings, model management, history and a first-run flow. 297 automated tests.
 
-```shell
-brew update # Optional
-brew install opensuperwhisper
+What is missing is mostly distribution rather than function — see
+[Known gaps](#known-gaps).
+
+### What it does
+
+- **Three trigger modes** — a bare modifier key (right Ctrl by default), a mouse button,
+  or a key combination such as `Alt` + `` ` ``. Hold-to-record, press-to-toggle, or
+  require a double tap.
+- **Types into the focused application**, by clipboard paste or by Unicode typing, with
+  the clipboard restored afterwards unless you took it over in the meantime.
+- **A floating indicator** beside your cursor while recording, with Escape to discard.
+- **History** of transcripts and audio — play back, copy, re-transcribe with a better
+  model, delete, or turn the whole thing off so nothing is written at all.
+- **Model manager** — the app ships with `tiny.en` so it works offline on first run, and
+  larger Whisper models can be downloaded from Settings.
+- **Audio files** — drop them on the History window, or open them with the app.
+- **Tray menu** for microphone and transcription language.
+- **No network access** except model downloads. Nothing you say leaves the machine.
+
+### Known gaps
+
+Stated plainly, because finding these out by surprise is worse than reading about them:
+
+| | |
+| --- | --- |
+| **Not code-signed** | SmartScreen warns on any downloaded build. Getting past it is *More info → Run anyway*. |
+| **Bluetooth microphones** | Warm-up detection is implemented and unit-tested, but has never run against a real Bluetooth headset. |
+| **Lock/unlock** | Windows gives no signal when it silently removes an input hook. A watchdog reinstalls every 30 s, which bounds the damage; the lock/unlock case itself is unverified. |
+| **Asian autocorrect** | The preference and the Rust library exist; nothing calls it yet. Deliberately absent from the UI rather than present and inert. |
+| **Parakeet engine** | Not ported. Whisper only. |
+| **ARM64** | Not built. The build scripts are architecture-parametric, so it is a configuration rather than a port. |
+| **No update check** | Updating means downloading a new build. |
+
+Windows 11 (build 22000) or later, x64. Windows 10 is not supported — it left mainstream
+support in October 2025.
+
+## Installing
+
+There is no published release yet. To build one:
+
+```powershell
+git clone https://github.com/MustafaBrandon/OpenSuperWhisper-win.git
+cd OpenSuperWhisper-win
+git submodule update --init --recursive
+
+./windows/native/build-native.ps1 -Configuration Release
+./windows/installer/build-installer.ps1
 ```
 
-Or from [GitHub releases page](https://github.com/Starmel/OpenSuperWhisper/releases).
+That produces a per-user installer (no administrator rights needed) in
+`windows/build/installer`. Prerequisites and the developer workflow are in
+[`windows/README.md`](windows/README.md).
 
-## Requirements
+## Credits
 
-- macOS (Apple Silicon/ARM64)
+The macOS application, its design, and the artwork this port reuses are the work of
+[Starmel](https://github.com/Starmel/OpenSuperWhisper) and its contributors. The
+behavioural specification the Windows client implements was read out of that source —
+including the constants that encode real debugging, like the 1.5-second clipboard
+restore delay and the 0.25 seconds of extra audio captured after the key is released.
 
-## Support
+Speech recognition is [whisper.cpp](https://github.com/ggerganov/whisper.cpp), built
+from the pinned submodule.
 
-If you encounter any issues or have questions, please:
-1. Check the existing issues in the repository
-2. Create a new issue with detailed information about your problem
-3. Include system information and logs when reporting bugs
+MIT licensed, as upstream is. See [LICENSE](LICENSE).
 
-## Building locally
+## The macOS app
 
-To build locally, you'll need:
+Unchanged from upstream, and not built by anything in `windows/`. Install it with
+`brew install opensuperwhisper`, or from
+[upstream's releases](https://github.com/Starmel/OpenSuperWhisper/releases); its
+documentation, screenshots and build instructions live in
+[upstream's repository](https://github.com/Starmel/OpenSuperWhisper).
 
-    git clone git@github.com:Starmel/OpenSuperWhisper.git
-    cd OpenSuperWhisper
-    git submodule update --init --recursive
-    brew install cmake libomp rust ruby
-    gem install xcpretty
-    ./run.sh build
+<p align="center">
+<img src="docs/image.png" width="400" alt="The macOS app's main window, showing transcription history" /> <img src="docs/image_indicator.png" width="400" alt="The macOS recording indicator" />
+</p>
 
-In case of problems, consult `.github/workflows/build.yml` which is our CI workflow
-where the app gets built automatically on GitHub's CI.
+<p align="center"><em>The macOS app. The Windows client follows the same behaviour with
+a native interface.</em></p>
 
-## Contributing
+### Whisper models
 
-Contributions are welcome! Please feel free to submit pull requests or create issues for bugs and feature requests.
+Model files (`.bin`) come from the
+[whisper.cpp Hugging Face repository](https://huggingface.co/ggerganov/whisper.cpp/tree/main).
+Both apps copy a default model into place on first launch, and can download larger ones
+from their settings.
 
-### Contribution TODO list
-
-- [ ] Streaming transcription
-- [ ] Custom dictionary / keyword boosting ([#19](https://github.com/Starmel/OpenSuperWhisper/issues/19))
-- [ ] Intel macOS compatibility ([#15](https://github.com/Starmel/OpenSuperWhisper/issues/15))
-- [ ] Agent mode ([#14](https://github.com/Starmel/OpenSuperWhisper/issues/14))
-- [x] Background app ([#8](https://github.com/Starmel/OpenSuperWhisper/issues/8))
-- [x] Support long-press single key audio recording ([#18](https://github.com/Starmel/OpenSuperWhisper/issues/18))
-
-## License
-
-OpenSuperWhisper is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
-
-## Whisper Models
-
-You can download Whisper model files (`.bin`) from the [Whisper.cpp Hugging Face repository](https://huggingface.co/ggerganov/whisper.cpp/tree/main). Place the downloaded `.bin` files in the app's models directory. On first launch, the app will attempt to copy a default model automatically, but you can add more models manually.
-
-### Hebrew (ivrit.ai)
-
-For Hebrew transcription, download the **"Turbo V3 Hebrew"** model from Settings → Model. It is [ivrit.ai](https://www.ivrit.ai/)'s Hebrew fine-tune of `whisper-large-v3-turbo` ([whisper-large-v3-turbo-ggml](https://huggingface.co/ivrit-ai/whisper-large-v3-turbo-ggml)) — the same base model as the other "Turbo V3" entries, but tuned for Hebrew. Selecting it automatically sets the input language to Hebrew, which these models require to be set explicitly.
+For Hebrew, the **Turbo V3 Hebrew** entry is [ivrit.ai](https://www.ivrit.ai/)'s
+fine-tune of `whisper-large-v3-turbo`
+([whisper-large-v3-turbo-ggml](https://huggingface.co/ivrit-ai/whisper-large-v3-turbo-ggml)).
+Selecting it sets the transcription language to Hebrew, which these models need set
+explicitly — on auto-detect they measurably degrade.

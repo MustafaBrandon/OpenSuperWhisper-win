@@ -147,14 +147,20 @@ is tested against one source of truth.
 **Upstream posture.** This fork never pushes to the repository it was forked from. Upstream is a
 read-only reference; nothing here is written with a pull request in mind.
 
-**The split.** Before release the `windows/` tree moves to
-`C:\Users\brand\Documents\GitHub\WindowsOpenSuperWhisper` as a standalone repository. Two things
-make that cheap if they are respected from M0 onward:
+**The split.** Before release the `windows/` tree moves to a standalone
+`WindowsOpenSuperWhisper` repository. Two things make that cheap if they are respected from M0
+onward:
 
 - Nothing under `windows/` references a path outside `windows/`, except the two submodules and the
   bundled model — all reached through variables set in one place, not hardcoded relative paths.
 - `git subtree split --prefix=windows` produces the new repository with history intact, so the
   split is a command rather than a migration.
+
+**One thing already breaks that.** `VadModelPath` points at `OpenSuperWhisper\ggml-silero-v5.1.2.bin`
+— the mac app's copy, outside `windows/`. A subtree split today produces a tree that builds and
+cannot transcribe, because VAD gating is what stops silence producing hallucinated text, and CI's
+split check only verifies that the solution file survives. The model has to move into `windows/`
+before the split, not at it.
 
 At the split, the bundled model and the submodules become the new repository's problem — see the
 repository-weight row in [Section 10](#10-risks).
