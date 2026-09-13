@@ -128,6 +128,28 @@ public static partial class Win32Input
     [LibraryImport("user32.dll")]
     public static partial uint GetDoubleClickTime();
 
+    /// <summary>
+    /// Whether a key is currently held, read from the asynchronous key state.
+    /// </summary>
+    /// <remarks>
+    /// Called from inside the hook callback, which has a hard latency budget — this is
+    /// safe there because it reads state the kernel already maintains and never blocks.
+    /// The alternative, tracking modifier state from the hook's own events, goes wrong
+    /// whenever a key was already held before the hook was installed.
+    /// <para>
+    /// Inside a low-level hook the state does not yet include the event being
+    /// delivered, which is exactly what a shortcut needs: when the main key arrives,
+    /// the modifiers held with it are already recorded.
+    /// </para>
+    /// </remarks>
+    [LibraryImport("user32.dll")]
+    public static partial short GetAsyncKeyState(int vKey);
+
+    /// <summary>Generic modifier virtual keys — either side counts as pressed.</summary>
+    public const int VK_SHIFT = 0x10;
+    public const int VK_CONTROL = 0x11;
+    public const int VK_MENU = 0x12;      // Alt
+
     // =========================================================================
     // Synthesised input (used by tests now, by the paste path at M4)
     // =========================================================================

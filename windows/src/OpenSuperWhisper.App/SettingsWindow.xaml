@@ -73,10 +73,24 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <TextBlock Text="Key or button" Style="{StaticResource FieldLabel}" />
-                                    <ComboBox x:Name="TriggerCombo" Grid.Column="1" Height="28" />
+                                    <ComboBox x:Name="TriggerCombo" Grid.Column="1" Height="28"
+                                              SelectionChanged="OnTriggerChanged" />
                                 </Grid>
-                                <TextBlock Style="{StaticResource Hint}"
+                                <TextBlock x:Name="TriggerHint" Style="{StaticResource Hint}"
                                            Text="While bound, this key does nothing else — it is withheld from other applications so it cannot open menus or type. Left Ctrl still works for shortcuts." />
+
+                                <!-- Shown only in shortcut mode. -->
+                                <StackPanel x:Name="ShortcutPanel" Visibility="Collapsed" Margin="0,0,0,6">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="RecordShortcutButton" Content="Record shortcut"
+                                                Height="28" Padding="12,0" Margin="0,0,10,0"
+                                                Click="OnRecordShortcut" />
+                                        <TextBlock x:Name="ShortcutText" VerticalAlignment="Center"
+                                                   FontWeight="SemiBold" Foreground="#FF1A1A1E" />
+                                    </StackPanel>
+                                    <TextBlock Style="{StaticResource Hint}" Margin="0,6,0,0"
+                                               Text="Hold the modifiers you want and press a key. Key names follow your active keyboard layout. Esc cancels recording." />
+                                </StackPanel>
 
                                 <CheckBox x:Name="HoldToRecordCheck" Content="Hold to record, release to stop" />
                                 <TextBlock Style="{StaticResource Hint}"

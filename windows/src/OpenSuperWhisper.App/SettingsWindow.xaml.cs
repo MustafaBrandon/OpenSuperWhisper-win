@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using OpenSuperWhisper.Core;
 using OpenSuperWhisper.Core.Audio;
 using OpenSuperWhisper.Core.Diagnostics;
@@ -10,6 +11,11 @@ using OpenSuperWhisper.Core.History;
 using OpenSuperWhisper.Core.Input;
 using OpenSuperWhisper.Core.Models;
 using OpenSuperWhisper.Core.Settings;
+
+// System.Windows.Input declares its own MouseButton, which has no None and would
+// silently win here. Same class of collision as Window.InputBindings, which is why
+// Core's InputBindings was renamed to TriggerBindings.
+using MouseButton = OpenSuperWhisper.Core.Input.MouseButton;
 
 namespace OpenSuperWhisper.App;
 
@@ -30,6 +36,12 @@ public partial class SettingsWindow : Window
     private readonly AppSettings _draft;
 
     private readonly Dictionary<string, CancellationTokenSource> _downloads = [];
+
+    /// <summary>Tag of the combo entry that means "a key combination, recorded below".</summary>
+    private const string ShortcutTag = "shortcut";
+
+    private ShortcutBinding _shortcut;
+    private bool _recordingShortcut;
 
     public SettingsWindow(SettingsStore store, ModelManager models, MicrophoneService microphones,
         RecordingStore? history = null)
@@ -68,7 +80,19 @@ public partial class SettingsWindow : Window
             TriggerCombo.Items.Add(new ComboBoxItem { Content = button.DisplayName(), Tag = $"mouse:{button}" });
         }
 
+        TriggerCombo.Items.Add(new ComboBoxItem
+        {
+            Content = "Key combination…",
+            Tag = ShortcutTag,
+        });
+
+        // Seeded even when unbound, so choosing shortcut mode always shows something
+        // valid rather than an empty box the user has to work out how to fill.
+        _shortcut = ShortcutBinding.Parse(_draft.ShortcutHotkey);
+        if (!_shortcut.IsValid) _shortcut = ShortcutBinding.Suggested;
+
         SelectTrigger();
+        UpdateShortcutText();
 
         foreach (var (code, name) in LanguageCatalog.ForDisplay())
         {
@@ -160,17 +184,140 @@ public partial class SettingsWindow : Window
 
     private void SelectTrigger()
     {
-        // A configured mouse button takes precedence over a modifier key, matching the
-        // coordinator's own rule.
-        var wanted = Enum.TryParse<MouseButton>(_draft.MouseButtonHotkey, out var button)
-            && button != MouseButton.None
-                ? $"mouse:{button}"
-                : $"key:{_draft.ModifierOnlyHotkey}";
+        // Mirrors the coordinator's precedence exactly: mouse button, then bare
+        // modifier, then shortcut. A dialog that disagreed with it would show one
+        // trigger while another was live.
+        string wanted;
+
+        if (Enum.TryParse<MouseButton>(_draft.MouseButtonHotkey, out var button)
+            && button != MouseButton.None)
+        {
+            wanted = $"mouse:{button}";
+        }
+        else if (Enum.TryParse<ModifierKey>(_draft.ModifierOnlyHotkey, out var key)
+            && key != ModifierKey.None)
+        {
+            wanted = $"key:{key}";
+        }
+        else
+        {
+            wanted = ShortcutBinding.Parse(_draft.ShortcutHotkey).IsValid
+                ? ShortcutTag
+                : $"key:{ModifierKey.RightControl}";
+        }
 
         SelectByTag(TriggerCombo, wanted);
 
         if (TriggerCombo.SelectedIndex < 0) SelectByTag(TriggerCombo, $"key:{ModifierKey.RightControl}");
     }
+
+    /// <summary>Shows the recorder only in shortcut mode, and fits the hint to it.</summary>
+    private void OnTriggerChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Fires during InitializeComponent, before the rest of the tree exists.
+        if (ShortcutPanel is null) return;
+
+        var isShortcut = TagOf(TriggerCombo) == ShortcutTag;
+
+        ShortcutPanel.Visibility = isShortcut ? Visibility.Visible : Visibility.Collapsed;
+
+        TriggerHint.Text = isShortcut
+            ? "The combination is withheld from other applications while it is bound, but only while its modifiers are held — the key works normally on its own."
+            : "While bound, this key does nothing else — it is withheld from other applications so it cannot open menus or type. Left Ctrl still works for shortcuts.";
+
+        if (!isShortcut) StopRecordingShortcut();
+    }
+
+    private void UpdateShortcutText() =>
+        ShortcutText.Text = _recordingShortcut
+            ? "Press the combination…"
+            : KeyboardLayoutProvider.DisplayName(_shortcut);
+
+    /// <summary>
+    /// Arms the recorder: the next real key press becomes the shortcut.
+    /// </summary>
+    /// <remarks>
+    /// Keys are read through the window's tunnelling preview, so a press lands here
+    /// rather than activating whichever button has focus. Space and Enter on a focused
+    /// button are the obvious cases, and they are also perfectly reasonable shortcut
+    /// keys.
+    /// </remarks>
+    private void OnRecordShortcut(object sender, RoutedEventArgs e)
+    {
+        if (_recordingShortcut)
+        {
+            StopRecordingShortcut();
+            return;
+        }
+
+        _recordingShortcut = true;
+        RecordShortcutButton.Content = "Cancel";
+        PreviewKeyDown += OnShortcutKeyDown;
+
+        UpdateShortcutText();
+    }
+
+    private void StopRecordingShortcut()
+    {
+        if (!_recordingShortcut) return;
+
+        _recordingShortcut = false;
+        RecordShortcutButton.Content = "Record shortcut";
+        PreviewKeyDown -= OnShortcutKeyDown;
+
+        UpdateShortcutText();
+    }
+
+    private void OnShortcutKeyDown(object sender, KeyEventArgs e)
+    {
+        // Alt combinations arrive as Key.System with the real key in SystemKey.
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        // Swallow everything while armed, or the keystroke also drives the dialog.
+        e.Handled = true;
+
+        if (key == Key.Escape)
+        {
+            StopRecordingShortcut();
+            return;
+        }
+
+        // A modifier on its own is the user still assembling the combination, not the
+        // combination. Bare modifiers are a separate trigger mode anyway.
+        if (IsModifierKey(key)) return;
+
+        var modifiers = ShortcutModifiers.None;
+        var held = Keyboard.Modifiers;
+
+        if (held.HasFlag(ModifierKeys.Control)) modifiers |= ShortcutModifiers.Control;
+        if (held.HasFlag(ModifierKeys.Alt)) modifiers |= ShortcutModifiers.Alt;
+        if (held.HasFlag(ModifierKeys.Shift)) modifiers |= ShortcutModifiers.Shift;
+        if (held.HasFlag(ModifierKeys.Windows)) modifiers |= ShortcutModifiers.Win;
+
+        if (modifiers == ShortcutModifiers.None)
+        {
+            // Refused rather than accepted, because the bound key is withheld from
+            // every other application: binding a bare "k" would take that letter away
+            // from the user's keyboard for as long as the app runs.
+            StatusText.Text = "A shortcut needs at least one modifier — hold Ctrl, Alt, Shift or Win.";
+            return;
+        }
+
+        var candidate = new ShortcutBinding(KeyInterop.VirtualKeyFromKey(key), modifiers);
+        if (!candidate.IsValid) return;
+
+        _shortcut = candidate;
+        StatusText.Text = string.Empty;
+
+        StopRecordingShortcut();
+    }
+
+    private static bool IsModifierKey(Key key) => key is
+        Key.LeftCtrl or Key.RightCtrl or
+        Key.LeftAlt or Key.RightAlt or
+        Key.LeftShift or Key.RightShift or
+        Key.LWin or Key.RWin or
+        Key.System;
 
     private void BuildMicrophoneList()
     {
@@ -464,10 +611,19 @@ public partial class SettingsWindow : Window
 
     private void OnSave(object sender, RoutedEventArgs e)
     {
+        // Exactly one trigger, so choosing any of the three clears the other two. The
+        // coordinator resolves by precedence, and leaving a stale modifier behind would
+        // silently outrank a shortcut the user just recorded.
         var trigger = TagOf(TriggerCombo);
         if (trigger.StartsWith("mouse:", StringComparison.Ordinal))
         {
             _draft.MouseButtonHotkey = trigger["mouse:".Length..];
+        }
+        else if (trigger == ShortcutTag)
+        {
+            _draft.MouseButtonHotkey = nameof(MouseButton.None);
+            _draft.ModifierOnlyHotkey = nameof(ModifierKey.None);
+            _draft.ShortcutHotkey = _shortcut.ToString();
         }
         else
         {
@@ -477,6 +633,9 @@ public partial class SettingsWindow : Window
                 : nameof(ModifierKey.RightControl);
 
             _draft.ModifierOnlyHotkey = key;
+
+            // Remembered so switching to another mode and back does not lose the
+            // choice, which is what the mac app's lastModifierOnlyHotkey is for.
             _draft.LastModifierOnlyHotkey = key;
         }
 
@@ -558,6 +717,8 @@ public partial class SettingsWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        StopRecordingShortcut();
+
         // Cancel anything still downloading, or the task keeps writing after the window
         // that owns its progress bar is gone.
         foreach (var download in _downloads.Values) download.Cancel();

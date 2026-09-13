@@ -71,6 +71,20 @@ public sealed class AppSettings
 
     public string MouseButtonHotkey { get; set; } = "None";
 
+    /// <summary>
+    /// Key-combination trigger, e.g. <c>Alt+0xC0</c>. Empty when unbound.
+    /// </summary>
+    /// <remarks>
+    /// Windows-only key. The mac app stores its shortcut through the KeyboardShortcuts
+    /// library rather than in the preference set §6 inventories, so there is no name to
+    /// match here.
+    /// <para>
+    /// The key is stored as a hex virtual key rather than a label because labels are
+    /// layout-dependent — see <see cref="Input.ShortcutBinding"/>.
+    /// </para>
+    /// </remarks>
+    public string ShortcutHotkey { get; set; } = string.Empty;
+
     public bool HoldToRecord { get; set; } = true;
 
     public bool DoublePressToTrigger { get; set; }

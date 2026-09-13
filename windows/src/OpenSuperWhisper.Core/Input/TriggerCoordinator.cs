@@ -10,6 +10,9 @@ public enum TriggerMode
 
     /// <summary>A mouse button, e.g. the thumb button.</summary>
     MouseButton,
+
+    /// <summary>A key combination, e.g. Alt+`.</summary>
+    Shortcut,
 }
 
 /// <summary>
@@ -19,8 +22,9 @@ public enum TriggerMode
 /// <remarks>
 /// <para>
 /// Exactly one trigger is live at a time, with a fixed precedence inherited from the
-/// mac app: a configured mouse button beats a modifier key. Both hooks are torn down
-/// before either is installed, so a rebind can never leave two live.
+/// mac app: a configured mouse button beats a bare modifier key, which beats a
+/// shortcut. Both hooks are torn down before either is installed, so a rebind can
+/// never leave two live.
 /// </para>
 /// <para>
 /// All decisions come from <see cref="TriggerStateMachine"/>. This class only
@@ -49,6 +53,7 @@ public sealed class TriggerCoordinator : IDisposable
     /// </remarks>
     private ModifierKey _modifierKey = ModifierKey.RightControl;
     private MouseButton _mouseButton = MouseButton.None;
+    private ShortcutBinding _shortcut = ShortcutBinding.None;
 
     // Auto-repeat suppression. Holding a key produces a stream of WM_KEYDOWN with no
     // intervening WM_KEYUP; without this, every repeat would toggle recording.
@@ -137,6 +142,31 @@ public sealed class TriggerCoordinator : IDisposable
         }
     }
 
+    /// <summary>Binds a key combination as the trigger.</summary>
+    /// <exception cref="ArgumentException">The binding has no key or no modifier.</exception>
+    public void UseShortcut(ShortcutBinding shortcut)
+    {
+        if (!shortcut.IsValid)
+        {
+            throw new ArgumentException(
+                "A shortcut needs a key and at least one modifier.", nameof(shortcut));
+        }
+
+        lock (_gate)
+        {
+            _mode = TriggerMode.Shortcut;
+            _shortcut = shortcut;
+            _mouseButton = MouseButton.None;
+            RebindLocked();
+        }
+    }
+
+    /// <summary>The bound shortcut, or <see cref="ShortcutBinding.None"/>.</summary>
+    public ShortcutBinding Shortcut
+    {
+        get { lock (_gate) return _shortcut; }
+    }
+
     /// <summary>Installs hooks for the current binding.</summary>
     public void Start()
     {
@@ -164,6 +194,13 @@ public sealed class TriggerCoordinator : IDisposable
         if (_mode == TriggerMode.ModifierKey && _modifierKey != ModifierKey.None)
         {
             _keyboardHook.SuppressedData = (uint)_modifierKey.ToVirtualKey();
+        }
+        else if (_mode == TriggerMode.Shortcut && _shortcut.IsValid)
+        {
+            // Withheld only while the modifiers are held, so the key keeps working
+            // normally the rest of the time — see KeyboardHook.RequiredModifiers.
+            _keyboardHook.SuppressedData = (uint)_shortcut.VirtualKey;
+            _keyboardHook.RequiredModifiers = _shortcut.Modifiers;
         }
 
         _keyboardHook.Start();
@@ -211,8 +248,24 @@ public sealed class TriggerCoordinator : IDisposable
 
         lock (_gate)
         {
-            if (_mode != TriggerMode.ModifierKey) return;
-            if (e.Data != (uint)_modifierKey.ToVirtualKey()) return;
+            switch (_mode)
+            {
+                case TriggerMode.ModifierKey:
+                    if (e.Data != (uint)_modifierKey.ToVirtualKey()) return;
+                    break;
+
+                case TriggerMode.Shortcut:
+                    if (e.Data != (uint)_shortcut.VirtualKey) return;
+
+                    // The modifiers are required to start but not to stop. Holding
+                    // Alt+` and releasing Alt first is normal, and demanding it on the
+                    // way up would leave the recording running with no way to end it.
+                    if (isDown && e.Modifiers != _shortcut.Modifiers) return;
+                    break;
+
+                default:
+                    return;
+            }
         }
 
         if (isDown) HandlePressDown();

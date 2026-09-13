@@ -91,7 +91,8 @@ public sealed class DictationController : IDisposable
 
         // Rebinding reinstalls both hooks, so avoid it unless the binding moved.
         var bindingChanged = previous.ModifierOnlyHotkey != settings.ModifierOnlyHotkey
-            || previous.MouseButtonHotkey != settings.MouseButtonHotkey;
+            || previous.MouseButtonHotkey != settings.MouseButtonHotkey
+            || previous.ShortcutHotkey != settings.ShortcutHotkey;
 
         if (bindingChanged) ApplyTriggerBinding(settings);
 
@@ -110,22 +111,29 @@ public sealed class DictationController : IDisposable
             + $"escNoConfirm={settings.EscCancelWithoutConfirmation}, sound={settings.PlaySoundOnRecordStart}");
     }
 
-    /// <summary>Binds the trigger, with mouse button taking precedence over modifier.</summary>
+    /// <summary>Binds whichever trigger the settings resolve to.</summary>
+    /// <remarks>
+    /// The precedence between the three modes lives in
+    /// <see cref="TriggerBindings.Resolve"/>, where it can be tested without a keyboard.
+    /// </remarks>
     public void ApplyTriggerBinding(AppSettings settings)
     {
-        if (Enum.TryParse<MouseButton>(settings.MouseButtonHotkey, out var button)
-            && button != MouseButton.None)
+        var resolved = TriggerBindings.Resolve(settings);
+
+        switch (resolved.Mode)
         {
-            _triggers.UseMouseButton(button);
-            return;
+            case TriggerMode.MouseButton:
+                _triggers.UseMouseButton(resolved.Button);
+                break;
+
+            case TriggerMode.Shortcut:
+                _triggers.UseShortcut(resolved.Shortcut);
+                break;
+
+            default:
+                _triggers.UseModifierKey(resolved.Key);
+                break;
         }
-
-        var key = Enum.TryParse<ModifierKey>(settings.ModifierOnlyHotkey, out var parsed)
-            && parsed != ModifierKey.None
-                ? parsed
-                : ModifierKey.RightControl;
-
-        _triggers.UseModifierKey(key);
     }
 
     private InsertionOptions Insertion => new(

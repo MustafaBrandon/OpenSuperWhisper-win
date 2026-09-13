@@ -68,6 +68,29 @@ public static partial class Win32Window
     [LibraryImport("user32.dll", EntryPoint = "VkKeyScanExW")]
     public static partial short VkKeyScanEx(ushort ch, IntPtr dwhkl);
 
+    /// <summary>Translate a virtual key to a scan code, keeping the extended prefix.</summary>
+    public const uint MAPVK_VK_TO_VSC_EX = 4;
+
+    [LibraryImport("user32.dll", EntryPoint = "MapVirtualKeyExW")]
+    public static partial uint MapVirtualKeyEx(uint uCode, uint uMapType, IntPtr dwhkl);
+
+    /// <summary>
+    /// The name printed on a key, in the user's own language and layout.
+    /// </summary>
+    /// <remarks>
+    /// The lParam is a packed scan code, not a virtual key: bits 16–23 carry the scan
+    /// code and bit 24 marks an extended key. Getting bit 24 wrong is how a shortcut
+    /// recorder ends up telling a user to press "Num 7" when the key they pressed was
+    /// Home.
+    /// </remarks>
+    /// <remarks>
+    /// Takes a raw buffer pointer: source-generated interop will not marshal a
+    /// <c>char[]</c> without disabling runtime marshalling assembly-wide, and a caller
+    /// with a stack buffer is both simpler and cheaper than that trade.
+    /// </remarks>
+    [LibraryImport("user32.dll", EntryPoint = "GetKeyNameTextW", SetLastError = true)]
+    public static unsafe partial int GetKeyNameText(int lParam, char* lpString, int cchSize);
+
     // =========================================================================
     // Caret and screen geometry
     // =========================================================================

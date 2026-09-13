@@ -5,7 +5,17 @@ using OpenSuperWhisper.Interop;
 namespace OpenSuperWhisper.Core.Input;
 
 /// <summary>A raw trigger event from a low-level hook.</summary>
-public readonly record struct HookEvent(int Message, uint Data, bool Injected);
+/// <param name="Modifiers">
+/// Which modifiers were held when the event arrived. Keyboard events only; always
+/// <see cref="ShortcutModifiers.None"/> for the mouse hook, which has no use for it.
+/// The snapshot is taken in the callback rather than read later, because by the time a
+/// consumer thread looks the user has often let go.
+/// </param>
+public readonly record struct HookEvent(
+    int Message,
+    uint Data,
+    bool Injected,
+    ShortcutModifiers Modifiers = ShortcutModifiers.None);
 
 /// <summary>
 /// Hosts a low-level input hook on a dedicated thread with its own message pump.
@@ -192,8 +202,15 @@ public abstract class LowLevelHook : IDisposable
         _queue.Enqueue(translated.Value);
         _signal.Set();
 
-        return ShouldSuppress(translated.Value, _suppressedData);
+        return SuppressMatches(translated.Value);
     }
+
+    /// <summary>
+    /// Whether this particular event is the bound trigger. Overridden where matching
+    /// takes more than the key code.
+    /// </summary>
+    protected virtual bool SuppressMatches(in HookEvent evt) =>
+        ShouldSuppress(evt, _suppressedData);
 
     /// <summary>Whether an event should be withheld from other applications.</summary>
     /// <remarks>
