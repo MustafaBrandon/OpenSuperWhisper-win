@@ -240,6 +240,15 @@ public sealed class TriggerCoordinator : IDisposable
         var isDown = e.Message is Win32Input.WM_KEYDOWN or Win32Input.WM_SYSKEYDOWN;
         var isUp = e.Message is Win32Input.WM_KEYUP or Win32Input.WM_SYSKEYUP;
 
+        // Runs on the consumer thread, never the hook callback, so it cannot cost the
+        // callback its latency budget. Off unless debugMode is on — and it is the only
+        // way to tell "the key never arrived" from "the key arrived and was ignored",
+        // which are the two halves of every report that the trigger does nothing.
+        Diagnostics.Log.Detail(() =>
+            $"hook: vk=0x{e.Data:X2} {(isDown ? "down" : isUp ? "up" : $"msg=0x{e.Message:X}")}"
+            + $"{(e.Injected ? " injected" : string.Empty)}"
+            + $" modifiers={e.Modifiers}");
+
         if (e.Data == Win32Input.VK_ESCAPE)
         {
             if (isDown && IsRecording) CancelRequested?.Invoke(this, EventArgs.Empty);
@@ -314,6 +323,9 @@ public sealed class TriggerCoordinator : IDisposable
             _triggerIsDown = false;
             action = _machine.OnPressUp(DateTime.UtcNow);
         }
+
+        Diagnostics.Log.Detail(() =>
+            $"trigger up: action={action} hold={_machine.HoldToRecord} recording={_machine.IsRecording}");
 
         Dispatch(action);
     }

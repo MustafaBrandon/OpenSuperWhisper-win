@@ -236,10 +236,13 @@ public abstract class LowLevelHook : IDisposable
                 {
                     Event?.Invoke(this, evt);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
                     // A handler throwing must not kill the consumer, or every later
-                    // hotkey press is silently lost.
+                    // hotkey press is silently lost — but swallowing it without a word
+                    // is how a broken handler turns into "the trigger sometimes does
+                    // nothing", with no evidence anywhere. Cost this one real debugging.
+                    Diagnostics.Log.Error("trigger handler threw", ex);
                 }
             }
         }

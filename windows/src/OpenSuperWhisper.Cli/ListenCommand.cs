@@ -6,7 +6,7 @@ using OpenSuperWhisper.Core.Transcription;
 namespace OpenSuperWhisper.Cli;
 
 /// <summary>
-/// Runs the full dictation loop from a global hotkey â€” the M3 exit criterion.
+/// Runs the full dictation loop from a global hotkey — the M3 exit criterion.
 /// </summary>
 /// <remarks>
 /// The first point at which the app behaves like the product: press the trigger

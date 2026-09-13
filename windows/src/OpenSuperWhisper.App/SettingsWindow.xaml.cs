@@ -20,7 +20,7 @@ using MouseButton = OpenSuperWhisper.Core.Input.MouseButton;
 namespace OpenSuperWhisper.App;
 
 /// <summary>
-/// The settings surface. Every preference in the plan's Â§6 is reachable here.
+/// The settings surface. Every preference in the plan's §6 is reachable here.
 /// </summary>
 /// <remarks>
 /// Edits a clone and applies it only on Save, so Cancel genuinely discards. Model
@@ -423,7 +423,7 @@ public partial class SettingsWindow : Window
 
         var detail = new TextBlock
         {
-            Text = $"{model.SizeLabel}  Â·  {model.Description}",
+            Text = $"{model.SizeLabel}  ·  {model.Description}",
             FontSize = 11.5,
             Foreground = System.Windows.Media.Brushes.Gray,
             TextWrapping = TextWrapping.Wrap,

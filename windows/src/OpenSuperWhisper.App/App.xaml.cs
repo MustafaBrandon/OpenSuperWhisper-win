@@ -2,6 +2,7 @@
 using System.Reflection;
 using System.Windows;
 using H.NotifyIcon;
+using Microsoft.Win32;
 using OpenSuperWhisper.Core;
 using OpenSuperWhisper.Core.Audio;
 using OpenSuperWhisper.Core.Diagnostics;
@@ -71,7 +72,7 @@ public partial class App : Application
         }
 
         Log.Start(AppPaths.Root);
-        Log.Write($"starting â€” Windows build {Environment.OSVersion.Version.Build}");
+        Log.Write($"starting — Windows build {Environment.OSVersion.Version.Build}");
 
         // Rev. 3 sets the floor at Windows 11. Say so rather than failing later in a
         // way that looks like a bug.
@@ -184,6 +185,17 @@ public partial class App : Application
 
         // A settings edit takes effect immediately rather than at next launch.
         _settings.Changed += (_, updated) => Dispatcher.Invoke(() => _controller.ApplySettings(updated));
+
+        _controller.StateChanged += (_, state) =>
+        {
+            _dictationState = state;
+
+            // Posted, not inline. This event is raised from inside a Dispatcher.Invoke
+            // that the hook thread is blocked on, so anything slow or throwing here
+            // would stall — or silently abort — the dictation it is merely decorating.
+            Dispatcher.BeginInvoke(new Action(() => RefreshTrayIcon()),
+                System.Windows.Threading.DispatcherPriority.Background);
+        };
 
         _controller.Start();
         Log.Write($"hooks installed, trigger = {_controller.Triggers.Mode} "
@@ -357,12 +369,82 @@ public partial class App : Application
 
         _tray = new TaskbarIcon
         {
-            ToolTipText = "OpenSuperWhisper â€” Hold Right Ctrl to dictate",
+            ToolTipText = IdleTooltip,
             ContextMenu = menu,
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = TrayIconFactory.Create(TrayIconState.Idle),
         };
 
         _tray.ForceCreate();
+
+        // The taskbar can switch between light and dark at any time, and the glyph is a
+        // flat single colour: on the wrong theme it is invisible rather than merely ugly.
+        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+    }
+
+    private const string IdleTooltip = "OpenSuperWhisper — hold the trigger key to dictate";
+
+    private TrayIconState _trayState = TrayIconState.Idle;
+    private bool _trayIsLight;
+    private Core.Indicator.IndicatorState _dictationState = Core.Indicator.IndicatorState.Idle;
+
+    private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category != UserPreferenceCategory.General) return;
+
+        // Raised on a system thread; the tray icon belongs to the UI one.
+        Dispatcher.Invoke(() =>
+        {
+            TrayIconFactory.Invalidate();
+            RefreshTrayIcon(force: true);
+        });
+    }
+
+    /// <summary>
+    /// Shows in the notification area whether the microphone is open.
+    /// </summary>
+    /// <remarks>
+    /// The indicator overlay says this too, but it appears beside the caret — wherever
+    /// the user is typing, which is not necessarily where they are looking, and it is
+    /// click-through and easy to miss. For a tool that hears everything said near it,
+    /// "is it listening right now" deserves an answer in a fixed place.
+    /// </remarks>
+    private void RefreshTrayIcon(bool force = false)
+    {
+        try
+        {
+            RefreshTrayIconCore(force);
+        }
+        catch (Exception ex)
+        {
+            // Decoration, not function. A tray icon that cannot be drawn is worth a log
+            // line and nothing more — it must never cost the user a dictation.
+            Log.Error("could not update the tray icon", ex);
+        }
+    }
+
+    private void RefreshTrayIconCore(bool force)
+    {
+        if (_tray is null) return;
+
+        // Only while the microphone is actually open. Decoding keeps the indicator up
+        // but the capture is already closed, and a red tray icon then would claim the
+        // app was still listening when it was not.
+        var recording = _dictationState
+            is Core.Indicator.IndicatorState.Recording
+            or Core.Indicator.IndicatorState.Connecting;
+
+        var state = recording ? TrayIconState.Recording : TrayIconState.Idle;
+        var light = TrayIconFactory.TaskbarIsLight;
+
+        // Assigning the icon is a Shell_NotifyIcon round trip, so only do it when the
+        // picture would actually change — this runs on the dictation tick.
+        if (!force && state == _trayState && light == _trayIsLight) return;
+
+        _trayState = state;
+        _trayIsLight = light;
+
+        _tray.Icon = TrayIconFactory.Create(state);
+        _tray.ToolTipText = recording ? "OpenSuperWhisper — recording" : IdleTooltip;
     }
 
     /// <summary>Removes recordings past the retention window, when retention is on.</summary>
@@ -535,6 +617,10 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        // A static event on a process-wide object: leaving this attached keeps the App
+        // alive past shutdown and fires callbacks into a disposed tray.
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+
         _channel?.Dispose();
         _controller?.Dispose();
         _tray?.Dispose();

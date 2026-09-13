@@ -7,7 +7,7 @@ using OpenSuperWhisper.Core.Transcription;
 namespace OpenSuperWhisper.Cli;
 
 /// <summary>
-/// Headless transcription driver â€” the M1 deliverable.
+/// Headless transcription driver — the M1 deliverable.
 /// </summary>
 /// <remarks>
 /// Exists so the transcription core can be exercised and compared against the mac

@@ -44,7 +44,7 @@ public sealed class DictationController : IDisposable
     /// throws or over-releases and later permits two concurrent recordings.
     /// <para>
     /// Interlocked claim and release makes ownership unambiguous and ending a session
-    /// idempotent â€” whoever gets there first wins, everyone else is a no-op.
+    /// idempotent — whoever gets there first wins, everyone else is a no-op.
     /// </para>
     /// </remarks>
     private int _sessionActive;
@@ -522,16 +522,26 @@ public sealed class DictationController : IDisposable
         _indicator.MoveToAnchor(_caret.Resolve());
     }
 
+    /// <summary>
+    /// Raised on the UI thread whenever the indicator state changes, so the shell can
+    /// mirror it — the tray icon shows whether the microphone is open.
+    /// </summary>
+    public event EventHandler<IndicatorState>? StateChanged;
+
     private void RenderState()
     {
         var now = DateTime.UtcNow;
         _indicator.Render(_state.State, _state.RecordingDuration(now), _state.IsConfirmingCancel(now));
+
+        StateChanged?.Invoke(this, _state.State);
     }
 
     private void HideIndicator()
     {
         _state.Reset();
         _indicator.Hide();
+
+        StateChanged?.Invoke(this, IndicatorState.Idle);
     }
 
     public void Dispose()

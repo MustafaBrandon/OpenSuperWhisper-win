@@ -7,7 +7,7 @@ namespace OpenSuperWhisper.Core.Settings;
 /// </summary>
 /// <remarks>
 /// Property names match the mac app's <c>UserDefaults</c> keys exactly, and so do the
-/// defaults â€” see docs/windows-port.md Â§6. Keeping them identical means a settings
+/// defaults — see docs/windows-port.md §6. Keeping them identical means a settings
 /// file can be compared field by field across platforms when behaviour diverges.
 /// <para>
 /// Two mac keys are absent: <c>fluidAudioModelVersion</c> went with the Parakeet
@@ -29,7 +29,7 @@ public sealed class AppSettings
 
     public bool SuppressBlankAudio { get; set; } = true;
 
-    /// <summary>Emitting timestamps disables VAD trimming â€” it would invalidate them.</summary>
+    /// <summary>Emitting timestamps disables VAD trimming — it would invalidate them.</summary>
     public bool ShowTimestamps { get; set; }
 
     public double Temperature { get; set; }
@@ -62,7 +62,7 @@ public sealed class AppSettings
     /// <remarks>
     /// Defaults to right Ctrl, not the mac's left Command. Right Alt would be the
     /// closer analogue of Option but is AltGr on many layouts, and the bound key is
-    /// withheld from other applications â€” see the M5 notes in the plan.
+    /// withheld from other applications — see the M5 notes in the plan.
     /// </remarks>
     public string ModifierOnlyHotkey { get; set; } = "RightControl";
 

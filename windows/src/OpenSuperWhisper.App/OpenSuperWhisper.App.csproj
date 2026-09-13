@@ -6,7 +6,24 @@
     <RootNamespace>OpenSuperWhisper.App</RootNamespace>
     <AssemblyName>OpenSuperWhisper</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!--
+      Gives the executable its icon in Explorer, the taskbar and Alt-Tab, and is what
+      the installer and Start-menu shortcut will use at M7. Inside windows/, so the
+      subtree split carries it.
+    -->
+    <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      The tray glyph travels as vector data and is rendered at run time: the taskbar
+      asks for several pixel sizes across the DPI range, and the colour depends on the
+      taskbar theme. See TrayIconFactory.
+    -->
+    <EmbeddedResource Include="..\..\assets\tray-glyph.path"
+                      LogicalName="OpenSuperWhisper.App.tray-glyph.path" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\OpenSuperWhisper.Core\OpenSuperWhisper.Core.csproj" />
