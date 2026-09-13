@@ -119,6 +119,13 @@ public partial class App : Application
             // or dropped on the executable.
             QueueFiles(e.Args);
 
+            // First run, or --onboarding to see it again. Last, so a launch that also
+            // carries work gets the work started first.
+            if (!_settings!.Current.HasCompletedOnboarding || e.Args.Contains("--onboarding"))
+            {
+                ShowOnboarding();
+            }
+
             Log.Write("startup complete");
         }
         catch (Exception ex)
@@ -391,6 +398,31 @@ public partial class App : Application
         _historyWindow.Activate();
     }
 
+
+    private OnboardingWindow? _onboardingWindow;
+
+    /// <summary>
+    /// First-run setup.
+    /// </summary>
+    /// <remarks>
+    /// Shown even when the app is set to start hidden: someone who has just installed it
+    /// needs to be told where it went, and that is exactly what the last page says.
+    /// </remarks>
+    private void ShowOnboarding()
+    {
+        if (_onboardingWindow is { IsLoaded: true })
+        {
+            _onboardingWindow.Activate();
+            return;
+        }
+
+        _onboardingWindow = new OnboardingWindow(_settings!, _controller!.Microphones, _controller);
+        _onboardingWindow.Closed += (_, _) => _onboardingWindow = null;
+        _onboardingWindow.Show();
+        _onboardingWindow.Activate();
+
+        Log.Write("onboarding shown");
+    }
 
     private SettingsWindow? _settingsWindow;
 
