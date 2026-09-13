@@ -1,6 +1,6 @@
 # OpenSuperWhisper for Windows — Porting Plan
 
-**Rev. 4** · Derived from the macOS source at `master` — 43 Swift files, 11,194 lines in the app target.
+**Rev. 5** · Derived from the macOS source at `master` — 43 Swift files, 11,194 lines in the app target.
 
 A module-by-module plan for rebuilding the macOS dictation app as a native Windows client: what
 carries over as logic, what gets rewritten against Win32, what gets dropped, and how each piece is
@@ -19,9 +19,16 @@ proven correct.
 - [11. Settled decisions](#11-settled-decisions)
 - [12. Out of scope](#12-out-of-scope)
 
-> **Status.** M0–M5 complete and verified on hardware. The app runs from the tray, dictates on a
-> global hotkey, and inserts into the focused application. 161 tests. Remaining: M6 (main window,
-> settings, model management, onboarding), M7 (packaging), M8 (Parakeet, deferred).
+> **Status.** M0–M6 complete and verified on hardware. The app runs from the tray, dictates on a
+> global hotkey, inserts into the focused application, and carries its full settings, model manager,
+> history and first-run flow. 283 tests. Remaining: M7 (packaging), M8 (Parakeet, deferred), and the
+> Tier 3/4 checks that need a human — see [Section 8](#8-test-plan).
+>
+> **Rev. 5 changes.** M6 is built. One preference is deliberately carried but not implemented —
+> `useAsianAutocorrect`, whose library is built and never called — and it has no UI rather than a
+> checkbox that does nothing. The trigger layer gained its third mode, the shortcut, which the
+> earlier milestones had left out; the preference inventory in [Section 6](#6-preferences-inventory)
+> gains the three Windows-only keys that had accumulated without being recorded there.
 >
 > **Rev. 4 changes.** M0 is built and green, and it turned up one thing that revises a decision's
 > reasoning without changing the decision: upstream whisper.cpp now ships its own **Parakeet**
@@ -425,7 +432,7 @@ diverges.
 | `debugMode` | `false` | — |
 | `playSoundOnRecordStart` | `false` | — |
 | `hasCompletedOnboarding` | `false` | — |
-| `useAsianAutocorrect` | `true` | Requires the Rust cdylib present. |
+| `useAsianAutocorrect` | `true` | **Carried, not implemented.** The cdylib is built; nothing calls it. No UI — see below. |
 | `selectedMicrophoneData` | `null` | Store the WASAPI endpoint ID string instead of an archived object. |
 | `modifierOnlyHotkey` | `none` | — |
 | `lastModifierOnlyHotkey` | `leftCommand` | **Change to `leftAlt`** — there is no Command key. |
@@ -442,11 +449,35 @@ diverges.
 | `fluidAudioModelVersion` | `v3` | **Drop** with the Parakeet engine. |
 | `qwen3Variant` | `f32` | **Drop** — unreferenced in the mac app. |
 
+### Windows-only keys
+
+Three keys exist here and have no mac counterpart. They are listed separately so the parity table
+above stays a true mac-to-Windows comparison.
+
+| Key | Default | Why it exists |
+| --- | --- | --- |
+| `useUnicodeTyping` | `false` | Selects `KEYEVENTF_UNICODE` typing over clipboard paste. No mac equivalent — the mac app has only the clipboard path. See M4. |
+| `saveTranscriptionHistory` | `true` | Turns history off outright: no row, and the audio is deleted after transcription. The mac app always records. |
+| `shortcutHotkey` | `""` | The key-combination trigger, e.g. `Alt+0xC0`. The mac app stores its shortcut through the KeyboardShortcuts library rather than in the preference set, so there is no name to match. |
+
+`shortcutHotkey` stores a hex **virtual key**, not a key name, because names are layout-dependent:
+the key labelled `` ` `` on a US layout is `^` on German, `²` on French and `ё` on Russian. Storing
+the label would silently rebind the trigger when the user switched layout. The label is resolved for
+display instead, by `KeyboardLayoutProvider`.
+
+### Unimplemented on purpose
+
+`useAsianAutocorrect` is the one preference in the inventory that does nothing. The Rust cdylib is
+built and shipped; no code calls it. It is deliberately **absent from the settings UI** — a checkbox
+for a feature that does nothing makes the feature look broken rather than unbuilt — while the key
+stays in `AppSettings` so a settings file round-trips and this table still lines up. Wiring it up is
+a small, self-contained piece of work whenever it is wanted.
+
 ### Default shortcut
 
-The mac default is ``Option + ` ``. The direct Windows translation is ``Alt + ` ``, which is free in
-most applications. Worth confirming against common targets before committing, since a bad default
-is the first thing every user hits.
+The mac default is ``Option + ` ``. The direct Windows translation is ``Alt + ` ``, which the
+shortcut recorder offers as its starting suggestion. It is not the *default trigger*: the default is
+bare right Ctrl, for the reasons in M5. A shortcut is opt-in, and a bare modifier outranks one.
 
 ---
 
@@ -733,7 +764,33 @@ History list with playback and re-transcribe, the full settings surface, model m
 downloads, drag-and-drop, onboarding.
 
 > **Exit** — Every preference in Section 6 is reachable and takes effect; parity checklist against
-> the mac app is complete or has explicit exceptions.
+> the mac app is complete or has explicit exceptions. **Met, with one explicit exception:**
+> `useAsianAutocorrect`, above.
+
+What it comprises: a four-tab settings window editing a draft so Cancel genuinely discards; a model
+manager with progress, cancel and a free-space check; SQLite history with playback, per-row copy,
+delete, clear-all and on-demand retention; re-transcribing a stored recording with today's model;
+drag-and-drop and Explorer opens; microphone and language in the tray; and a three-page first run.
+
+Three findings worth recording, all of the same shape — a preference that existed without an effect:
+
+**A toggle that does nothing is worse than a missing one.** `playSoundOnRecordStart` and
+`useAsianAutocorrect` were both reachable in the UI and read by nothing. The first is now
+implemented; the second has had its checkbox removed rather than left to imply the feature is broken.
+`debugMode` had neither UI nor effect and now drives verbose logging. The general rule this leaves:
+a preference is not done when it is stored and rendered, only when something reads it.
+
+**The settings file is a hand-editable input.** Clamping numeric values in the dialog leaves a
+hand-edited `settings.json` unclamped, and an out-of-range temperature or a beam size of zero does
+not fail loudly — it silently produces worse transcripts. Clamping moved into
+`AppSettings.Normalize`, which every load and save goes through. Retention days are pointedly
+excluded: a non-positive value is how `RetentionPolicy` disables retention.
+
+**A shortcut cannot be suppressed the way a bare modifier is.** Withholding a bound trigger key from
+other applications is right for right Ctrl, which has nothing else to do. Applying it to a
+shortcut's main key would delete that character from the keyboard for as long as the app ran, so a
+shortcut's key is withheld only while its modifiers are held — and released regardless of them,
+because users let go of Alt before the main key most of the time.
 
 ### M7 · Packaging
 

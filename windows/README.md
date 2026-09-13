@@ -5,7 +5,9 @@ it is not built from here, and no code is shared with it. See
 [`../docs/windows-port.md`](../docs/windows-port.md) for the plan, the behavioral
 spec inherited from the mac app, and the decisions behind this layout.
 
-Current milestone: **M0 — build and CI.**
+Current milestone: **M7 — packaging.** M0–M6 are done: the app runs from the
+tray, dictates on a global trigger, inserts into the focused application, and
+carries its settings, model manager, history and first-run flow.
 
 ## Prerequisites
 
@@ -54,13 +56,20 @@ windows/
 ├── OpenSuperWhisper.slnx
 ├── native/                 CMake driver and build script for the native DLLs
 ├── src/
+│   ├── OpenSuperWhisper.App/       WPF: tray, indicator, settings, history, onboarding
+│   ├── OpenSuperWhisper.Cli/       osw — headless diagnostics (record, listen, insert)
 │   ├── OpenSuperWhisper.Core/      app logic ported from the mac source
 │   └── OpenSuperWhisper.Interop/   hand-written P/Invoke
 └── tests/
 ```
 
-There is no UI project yet. WPF arrives at M5, once the native layer, capture,
-input hooks and text injection are proven — the risky parts come first.
+The UI came last on purpose: the native layer, capture, input hooks and text
+injection were proven headlessly first, because they are where the surprises
+live. `./run-app` stops, rebuilds and relaunches the app in one step.
+
+Useful flags: `--settings`, `--history` and `--onboarding` open those windows
+directly, which matters because Windows 11 hides new tray icons behind the
+chevron. `--paste-target` and `--test-insert` are the M5 insertion diagnostics.
 
 ## Two rules that keep the split cheap
 
