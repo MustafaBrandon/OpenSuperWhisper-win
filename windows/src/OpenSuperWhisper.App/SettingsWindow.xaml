@@ -209,8 +209,10 @@
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="Disables silence trimming, since trimming would make the timestamps wrong." />
 
+                                <!-- Doubled underscore: a single one is an access-key marker in
+                                     WPF content, so "[BLANK_AUDIO]" renders as "[BLANKAUDIO]". -->
                                 <CheckBox x:Name="SuppressBlankCheck"
-                                          Content="Drop [BLANK_AUDIO] and [MUSIC] markers" />
+                                          Content="Drop [BLANK__AUDIO] and [MUSIC] markers" />
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="Whisper emits these for non-speech. Off, they appear in the transcript and get pasted with it." />
 
