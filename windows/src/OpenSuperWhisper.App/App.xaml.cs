@@ -26,12 +26,14 @@ public partial class App : Application
     private const string InstanceMutexName = @"Global\OpenSuperWhisper.SingleInstance";
 
     private Mutex? _instanceMutex;
+    private SingleInstanceChannel? _channel;
     private TaskbarIcon? _tray;
     private IndicatorWindow? _indicator;
     private DictationController? _controller;
     private SettingsStore? _settings;
     private ModelManager? _models;
     private RecordingStore? _history;
+    private AudioFileImporter? _importer;
 
     /// <summary>
     /// The model to load: the user's choice when it still exists, otherwise the bundled
@@ -63,9 +65,7 @@ public partial class App : Application
         _instanceMutex = new Mutex(true, InstanceMutexName, out var isFirstInstance);
         if (!isFirstInstance)
         {
-            MessageBox.Show(
-                "OpenSuperWhisper is already running. Look for it in the notification area.",
-                "OpenSuperWhisper", MessageBoxButton.OK, MessageBoxImage.Information);
+            HandOffToRunningInstance(e.Args);
             Shutdown();
             return;
         }
@@ -114,6 +114,10 @@ public partial class App : Application
             // dialog can be genuinely hard to find.
             if (e.Args.Contains("--settings")) ShowSettings();
             if (e.Args.Contains("--history")) ShowHistory();
+
+            // Files given on the command line — an audio file opened from Explorer,
+            // or dropped on the executable.
+            QueueFiles(e.Args);
 
             Log.Write("startup complete");
         }
@@ -178,8 +182,108 @@ public partial class App : Application
         Log.Write($"hooks installed, trigger = {_controller.Triggers.Mode} "
                 + $"(suppressed so it cannot reach other apps)");
 
+        _importer = new AudioFileImporter(_controller.TranscribeFileAsync, _history, _settings);
+
+        // Accept files opened while the app is already running. Started after the
+        // pipeline is up, so a forwarded file never arrives before there is an engine
+        // to give it to.
+        _channel = new SingleInstanceChannel();
+        _channel.MessageReceived += (_, args) => Dispatcher.Invoke(() => HandleForwardedLaunch(args));
+        _channel.Listen();
+
         BuildTray();
         Log.Write("tray icon created");
+    }
+
+    /// <summary>
+    /// Forwards a second launch's arguments to the instance already running.
+    /// </summary>
+    /// <remarks>
+    /// Opening an audio file from Explorer starts a new process; this is what turns
+    /// that into "transcribe it in the app that is already up". A launch with no files
+    /// shows history, because the closest thing this app has to a main window is more
+    /// useful than a dialog saying it is already running.
+    /// </remarks>
+    private static void HandOffToRunningInstance(string[] args)
+    {
+        var files = AudioFileImporter.AudioFilesIn(args);
+
+        // "--history" is a request the running instance already understands, so a bare
+        // relaunch reuses it rather than inventing a second verb.
+        var message = files.Count > 0 ? files.ToArray() : ["--history"];
+
+        if (SingleInstanceChannel.Send(message)) return;
+
+        // The other instance is up — it holds the mutex — but not listening: it may be
+        // mid-startup or mid-shutdown. Saying so beats appearing to do nothing.
+        MessageBox.Show(
+            "OpenSuperWhisper is already running, but is not responding yet. "
+            + "Look for it in the notification area.",
+            "OpenSuperWhisper", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    /// <summary>
+    /// Acts on a command line forwarded from a second launch, as if it were our own.
+    /// </summary>
+    private void HandleForwardedLaunch(string[] args)
+    {
+        Log.Write($"forwarded launch: {string.Join(' ', args)}");
+
+        if (args.Contains("--settings")) ShowSettings();
+        if (args.Contains("--history")) ShowHistory();
+
+        QueueFiles(args);
+    }
+
+    /// <summary>Transcribes any audio files among the given arguments.</summary>
+    private void QueueFiles(string[] args)
+    {
+        var files = AudioFileImporter.AudioFilesIn(args);
+        if (files.Count == 0 || _importer is null) return;
+
+        Log.Write($"queued {files.Count} file(s) from the command line");
+
+        // Deliberately not opened in a window: per the plan's module 09, files arrive
+        // as work to do, not as documents to look at. The tray notification is the
+        // feedback, and the transcript lands in history.
+        _ = ImportQueuedAsync(files);
+    }
+
+    private async Task ImportQueuedAsync(IReadOnlyList<string> files)
+    {
+        try
+        {
+            ReportImport(await _importer!.ImportAsync(files));
+        }
+        catch (Exception ex)
+        {
+            // Per-file failures are already reported in the results; reaching here means
+            // the queue itself broke, which must not take the app down with it.
+            Log.Error("queued import failed", ex);
+        }
+    }
+
+    private void ReportImport(IReadOnlyList<ImportResult> results)
+    {
+        var failed = results.Count(r => r.Error is not null);
+        var transcribed = results.Count(r => r.Succeeded);
+
+        var message = failed > 0
+            ? $"{transcribed} transcribed, {failed} failed. See the log for details."
+            : $"{transcribed} file(s) transcribed. Open History to read them.";
+
+        Log.Write($"import finished: {message}");
+
+        try
+        {
+            _tray?.ShowNotification("OpenSuperWhisper", message);
+        }
+        catch (Exception ex)
+        {
+            // Notifications are suppressible by policy and by focus-assist. Losing one
+            // is not worth an error dialog.
+            Log.Error("could not show the import notification", ex);
+        }
     }
 
     /// <summary>
@@ -227,6 +331,8 @@ public partial class App : Application
         menu.Items.Add(new System.Windows.Controls.Separator());
 
         menu.Items.Add(BuildMicrophoneMenu());
+        menu.Items.Add(BuildLanguageMenu());
+
         var history = new System.Windows.Controls.MenuItem { Header = "History…" };
         history.Click += (_, _) => ShowHistory();
         menu.Items.Add(history);
@@ -279,7 +385,7 @@ public partial class App : Application
             return;
         }
 
-        _historyWindow = new HistoryWindow(_history!, _settings!, _controller!.TranscribeFileAsync);
+        _historyWindow = new HistoryWindow(_history!, _settings!, _importer!);
         _historyWindow.Closed += (_, _) => _historyWindow = null;
         _historyWindow.Show();
         _historyWindow.Activate();
@@ -354,8 +460,50 @@ public partial class App : Application
         return root;
     }
 
+    /// <summary>
+    /// Transcription language, in the tray so it can be changed mid-task.
+    /// </summary>
+    /// <remarks>
+    /// Carried over from the mac app's status menu, and it earns its place: switching
+    /// language is the one setting people change without changing anything else, and
+    /// routing that through a settings dialog is three clicks too many.
+    /// <para>
+    /// Unlike the settings dialog this applies immediately — there is no draft to
+    /// cancel, and a menu that needed a Save button would be a strange menu.
+    /// </para>
+    /// </remarks>
+    private System.Windows.Controls.MenuItem BuildLanguageMenu()
+    {
+        var root = new System.Windows.Controls.MenuItem { Header = "Language" };
+
+        root.SubmenuOpened += (_, _) =>
+        {
+            root.Items.Clear();
+
+            var active = _settings?.Current.WhisperLanguage ?? LanguageCatalog.AutoDetect;
+
+            foreach (var (code, name) in LanguageCatalog.ForDisplay())
+            {
+                var item = new System.Windows.Controls.MenuItem
+                {
+                    Header = name,
+                    IsCheckable = true,
+                    IsChecked = code == active,
+                };
+
+                var chosen = code;
+                item.Click += (_, _) => _settings?.Update(s => s.WhisperLanguage = chosen);
+
+                root.Items.Add(item);
+            }
+        };
+
+        return root;
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
+        _channel?.Dispose();
         _controller?.Dispose();
         _tray?.Dispose();
 

@@ -23,19 +23,18 @@ public partial class HistoryWindow : Window
 {
     private readonly RecordingStore _store;
     private readonly SettingsStore _settings;
-    private readonly Func<string, Task<string>> _transcribeFile;
+    private readonly AudioFileImporter _importer;
 
     private WaveOutEvent? _player;
     private AudioFileReader? _playerReader;
 
-    public HistoryWindow(RecordingStore store, SettingsStore settings,
-        Func<string, Task<string>> transcribeFile)
+    public HistoryWindow(RecordingStore store, SettingsStore settings, AudioFileImporter importer)
     {
         InitializeComponent();
 
         _store = store;
         _settings = settings;
-        _transcribeFile = transcribeFile;
+        _importer = importer;
 
         Refresh();
     }
@@ -167,7 +166,7 @@ public partial class HistoryWindow : Window
 
         try
         {
-            var text = await _transcribeFile(audio);
+            var text = await _importer.TranscribeAsync(audio);
 
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -257,9 +256,6 @@ public partial class HistoryWindow : Window
     // Drag and drop
     // =====================================================================
 
-    private static readonly string[] AudioExtensions =
-        [".wav", ".mp3", ".m4a", ".aac", ".wma", ".flac", ".ogg", ".mp4"];
-
     private void OnDragOver(object sender, DragEventArgs e)
     {
         e.Effects = DroppedAudioFiles(e).Count > 0 ? DragDropEffects.Copy : DragDropEffects.None;
@@ -271,8 +267,7 @@ public partial class HistoryWindow : Window
         if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return [];
         if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths) return [];
 
-        return [.. paths.Where(p =>
-            AudioExtensions.Contains(Path.GetExtension(p), StringComparer.OrdinalIgnoreCase))];
+        return AudioFileImporter.AudioFilesIn(paths);
     }
 
     private async void OnFilesDropped(object sender, DragEventArgs e)
@@ -280,48 +275,28 @@ public partial class HistoryWindow : Window
         var files = DroppedAudioFiles(e);
         if (files.Count == 0) return;
 
-        // Sequential rather than parallel: one whisper context cannot decode two files
-        // at once, and queueing them keeps the order the user dropped them in.
-        foreach (var file in files)
+        // The importer queues, so a drop during a still-running Explorer open waits its
+        // turn rather than contending for the one whisper context.
+        void OnStarted(object? _, string name) => CountText.Text = $"Transcribing {name}…";
+
+        _importer.Started += OnStarted;
+
+        try
         {
-            CountText.Text = $"Transcribing {Path.GetFileName(file)}…";
+            var results = await _importer.ImportAsync(files);
 
-            try
+            foreach (var failure in results.Where(r => r.Error is not null))
             {
-                var text = await _transcribeFile(file);
-
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    Log.Write($"dropped file produced no speech: {file}");
-                    continue;
-                }
-
-                // Imported files are recorded with their source path, and their audio is
-                // NOT moved into the library - the original stays where the user left it.
-                if (_settings.Current.SaveTranscriptionHistory)
-                {
-                    _store.Add(new Recording
-                    {
-                        Id = Guid.NewGuid(),
-                        Timestamp = DateTimeOffset.Now,
-                        FileName = Path.GetFileName(file),
-                        Transcription = text,
-                        DurationSeconds = 0,
-                        Status = RecordingStatus.Completed,
-                        Progress = 1.0,
-                        SourceFilePath = file,
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"could not transcribe {file}", ex);
-                MessageBox.Show($"Could not transcribe {Path.GetFileName(file)}.\n\n{ex.Message}",
+                MessageBox.Show(
+                    $"Could not transcribe {Path.GetFileName(failure.Path)}.\n\n{failure.Error}",
                     "Transcription failed", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
-
-        Refresh();
+        finally
+        {
+            _importer.Started -= OnStarted;
+            Refresh();
+        }
     }
 
     protected override void OnClosed(EventArgs e)
