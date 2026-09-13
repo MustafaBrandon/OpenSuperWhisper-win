@@ -10,6 +10,7 @@ using OpenSuperWhisper.Core.History;
 using OpenSuperWhisper.Core.Input;
 using OpenSuperWhisper.Core.Models;
 using OpenSuperWhisper.Core.Settings;
+using OpenSuperWhisper.Core.Startup;
 using OpenSuperWhisper.Core.Text;
 
 namespace OpenSuperWhisper.App;
@@ -96,6 +97,28 @@ public partial class App : Application
             args.Handled = true;
         };
 
+        // The UI thread is not where this app does its work. Capture, transcription and
+        // the hook consumer all run elsewhere, and an exception on any of them takes
+        // the process down with no dialog and, until now, no log line either.
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            if (args.ExceptionObject is Exception ex) Log.Error("unhandled exception", ex);
+            else Log.Write($"unhandled non-exception throw: {args.ExceptionObject}");
+
+            // Terminating is the runtime's decision, not ours; all we can do is get the
+            // reason on disk before the process goes.
+            Log.Write($"process terminating: {args.IsTerminating}");
+        };
+
+        // A faulted task nobody awaited. Silent by default since .NET 4.5, and the
+        // fire-and-forget imports and transcriptions here are exactly the shape that
+        // produces them.
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            Log.Error("unobserved task exception", args.Exception);
+            args.SetObserved();
+        };
+
         try
         {
             StartDictation();
@@ -125,6 +148,10 @@ public partial class App : Application
             if (!_settings!.Current.HasCompletedOnboarding || e.Args.Contains("--onboarding"))
             {
                 ShowOnboarding();
+            }
+            else if (ShouldShowWindowOnLaunch(e.Args))
+            {
+                ShowHistory();
             }
 
             Log.Write("startup complete");
@@ -212,6 +239,39 @@ public partial class App : Application
 
         BuildTray();
         Log.Write("tray icon created");
+
+        // Only ever repairs an existing registration; it never creates one. Moving or
+        // reinstalling the app otherwise leaves a sign-in entry pointing at a path that
+        // no longer exists, which fails silently at exactly the moment nobody is
+        // watching.
+        new AutostartRegistration().RepairIfStale();
+    }
+
+    /// <summary>
+    /// Whether a plain launch should put something on screen.
+    /// </summary>
+    /// <remarks>
+    /// This app has no main window, so without this a launch does nothing visible at
+    /// all and looks like it failed. History is the closest thing it has to one.
+    /// <para>
+    /// Two things suppress it. <c>startHiddenInTray</c> is the user saying they know
+    /// where the app lives — the mac app's <c>startHiddenInMenuBar</c>, and until now
+    /// the Windows build carried the preference without honouring it. And a sign-in
+    /// launch never shows a window whatever that preference says: the user did not ask
+    /// for the app at that moment, the machine did.
+    /// </para>
+    /// </remarks>
+    private bool ShouldShowWindowOnLaunch(string[] args)
+    {
+        if (args.Contains(AutostartRegistration.StartupArgument)) return false;
+        if (_settings!.Current.StartHiddenInTray) return false;
+
+        // A launch that already opened something, or that carries work, has said what
+        // it is for.
+        if (args.Contains("--settings") || args.Contains("--history")) return false;
+        if (AudioFileImporter.AudioFilesIn(args).Count > 0) return false;
+
+        return true;
     }
 
     /// <summary>
@@ -225,11 +285,18 @@ public partial class App : Application
     /// </remarks>
     private static void HandOffToRunningInstance(string[] args)
     {
-        var files = AudioFileImporter.AudioFilesIn(args);
+        // Forward what was actually asked for. Sending only the files — which is what
+        // this did at first — meant "--settings" on a second launch silently became
+        // "open history", because the receiving side never saw the flag.
+        string[] message =
+        [
+            .. AudioFileImporter.AudioFilesIn(args),
+            .. args.Where(a => ForwardableVerbs.Contains(a, StringComparer.OrdinalIgnoreCase)),
+        ];
 
-        // "--history" is a request the running instance already understands, so a bare
-        // relaunch reuses it rather than inventing a second verb.
-        var message = files.Count > 0 ? files.ToArray() : ["--history"];
+        // A bare relaunch means "show me the app", and history is the closest thing it
+        // has to a main window.
+        if (message.Length == 0) message = ["--history"];
 
         if (SingleInstanceChannel.Send(message)) return;
 
@@ -244,12 +311,23 @@ public partial class App : Application
     /// <summary>
     /// Acts on a command line forwarded from a second launch, as if it were our own.
     /// </summary>
+    /// <summary>
+    /// Verbs a second launch may ask the running instance to act on.
+    /// </summary>
+    /// <remarks>
+    /// An allow-list rather than passing the whole command line through: the diagnostic
+    /// flags open windows and synthesise input, and neither should be reachable by
+    /// anything that can write to the pipe.
+    /// </remarks>
+    private static readonly string[] ForwardableVerbs = ["--settings", "--history", "--onboarding"];
+
     private void HandleForwardedLaunch(string[] args)
     {
         Log.Write($"forwarded launch: {string.Join(' ', args)}");
 
         if (args.Contains("--settings")) ShowSettings();
         if (args.Contains("--history")) ShowHistory();
+        if (args.Contains("--onboarding")) ShowOnboarding();
 
         QueueFiles(args);
     }

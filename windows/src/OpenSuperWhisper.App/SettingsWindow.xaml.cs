@@ -11,6 +11,7 @@ using OpenSuperWhisper.Core.History;
 using OpenSuperWhisper.Core.Input;
 using OpenSuperWhisper.Core.Models;
 using OpenSuperWhisper.Core.Settings;
+using OpenSuperWhisper.Core.Startup;
 
 // System.Windows.Input declares its own MouseButton, which has no None and would
 // silently win here. Same class of collision as Window.InputBindings, which is why
@@ -42,6 +43,8 @@ public partial class SettingsWindow : Window
 
     private ShortcutBinding _shortcut;
     private bool _recordingShortcut;
+
+    private readonly AutostartRegistration _autostart = new();
 
     public SettingsWindow(SettingsStore store, ModelManager models, MicrophoneService microphones,
         RecordingStore? history = null)
@@ -129,6 +132,10 @@ public partial class SettingsWindow : Window
 
         StartHiddenCheck.IsChecked = _draft.StartHiddenInTray;
         DebugModeCheck.IsChecked = _draft.DebugMode;
+
+        // Read from the registry, not from a preference. Windows' own Startup Apps page
+        // can turn this off, and a checkbox that disagreed with it would be lying.
+        AutostartCheck.IsChecked = _autostart.IsEnabled;
         SaveHistoryCheck.IsChecked = _draft.SaveTranscriptionHistory;
         AutoDeleteCheck.IsChecked = _draft.AutoDeleteRecordingsEnabled;
         RetentionDaysBox.Text = _draft.AutoDeleteRecordingsAfterDays.ToString();
@@ -680,6 +687,20 @@ public partial class SettingsWindow : Window
 
         _draft.StartHiddenInTray = StartHiddenCheck.IsChecked == true;
         _draft.DebugMode = DebugModeCheck.IsChecked == true;
+
+        // The registry is the record here, so this applies directly rather than through
+        // the draft — and it is only touched when the user actually changed it, so
+        // opening and saving this dialog cannot resurrect an entry they removed in
+        // Windows' own Startup Apps page while it was open.
+        var wantsAutostart = AutostartCheck.IsChecked == true;
+
+        if (wantsAutostart != _autostart.IsEnabled && !_autostart.Set(wantsAutostart))
+        {
+            MessageBox.Show(
+                "Windows would not let this be changed. A policy on this machine may "
+                + "manage which applications start at sign-in.",
+                "Could not change startup", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
         _draft.SaveTranscriptionHistory = SaveHistoryCheck.IsChecked == true;
         _draft.AutoDeleteRecordingsEnabled = AutoDeleteCheck.IsChecked == true;
 

@@ -267,7 +267,13 @@
                         <TextBlock Text="Application" Style="{StaticResource SectionHeading}" />
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
+                                <CheckBox x:Name="AutostartCheck" Content="Start OpenSuperWhisper when I sign in" />
+                                <TextBlock x:Name="AutostartHint" Style="{StaticResource Hint}"
+                                           Text="Signing in never opens a window, whatever the setting below says." />
+
                                 <CheckBox x:Name="StartHiddenCheck" Content="Start hidden in the notification area" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Otherwise launching OpenSuperWhisper opens your history, since it has no main window of its own." />
                                 <CheckBox x:Name="DebugModeCheck" Content="Write detailed diagnostics to the log" />
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="Records the settings, audio and timings behind every dictation. Useful when reporting a problem; noisy otherwise." />

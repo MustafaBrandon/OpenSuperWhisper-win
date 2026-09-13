@@ -48,8 +48,8 @@ public static class Log
                 Directory.CreateDirectory(directory);
                 _path = System.IO.Path.Combine(directory, name);
 
-                // Truncate per run rather than rotating: this is a debugging aid, and
-                // the interesting content is always the most recent launch.
+                KeepPreviousRun(_path);
+
                 File.WriteAllText(_path,
                     $"OpenSuperWhisper log — {DateTime.Now:yyyy-MM-dd HH:mm:ss}{Environment.NewLine}");
             }
@@ -57,6 +57,36 @@ public static class Log
             {
                 _path = null;
             }
+        }
+    }
+
+    /// <summary>Where the previous run's log is kept.</summary>
+    public static string PreviousPathFor(string path) =>
+        System.IO.Path.ChangeExtension(path, null) + "-previous"
+        + System.IO.Path.GetExtension(path);
+
+    /// <summary>
+    /// Moves the last run's log aside before this one truncates it.
+    /// </summary>
+    /// <remarks>
+    /// One generation, not a rotation scheme. The reason it exists at all: a crash is
+    /// almost always followed immediately by the user restarting the app, and without
+    /// this that restart destroys the only record of what happened. Asking someone to
+    /// reproduce a crash before you can read about it is a poor way to run a bug
+    /// report.
+    /// </remarks>
+    private static void KeepPreviousRun(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+
+            File.Move(path, PreviousPathFor(path), overwrite: true);
+        }
+        catch (IOException)
+        {
+            // Another instance may hold it open. Losing the previous log is not worth
+            // failing to start a new one.
         }
     }
 

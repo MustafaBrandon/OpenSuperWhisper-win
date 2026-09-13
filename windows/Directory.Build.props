@@ -36,6 +36,20 @@
       worth a UI that cannot draw.
     -->
 
+    <!--
+      Identity, which ends up in the file properties Explorer shows, in the installer's
+      metadata and in its Programs and Features entry, and is what an update check
+      compares against.
+
+      Pre-1.0 deliberately: the milestone plan reaches 1.0 when M7 ships a signed
+      installer. The minor version tracks the last completed milestone, so 0.6.x is
+      "everything through M6".
+    -->
+    <Product>OpenSuperWhisper</Product>
+    <Company>OpenSuperWhisper</Company>
+    <Version>0.6.0</Version>
+    <Copyright>Copyright © OpenSuperWhisper contributors</Copyright>
+
     <!-- Rev. 3: x64 only, Windows 11 (build 22000) floor. -->
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
