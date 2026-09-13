@@ -55,6 +55,26 @@ public sealed record Recording
     /// <summary>Full path to the stored audio.</summary>
     public string AudioPath => System.IO.Path.Combine(AppPaths.Recordings, FileName);
 
+    /// <summary>
+    /// The audio this entry can still be played or re-read from, or null if it is gone.
+    /// </summary>
+    /// <remarks>
+    /// Two places to look, in order. A dictation's audio lives in the library under
+    /// <see cref="AudioPath"/>. An imported file was never copied there — only its path
+    /// was recorded — so it is readable exactly as long as the user leaves it where it
+    /// is, which is a promise the app cannot make on their behalf.
+    /// </remarks>
+    public string? PlayablePath
+    {
+        get
+        {
+            if (System.IO.File.Exists(AudioPath)) return AudioPath;
+            if (SourceFilePath is { } source && System.IO.File.Exists(source)) return source;
+
+            return null;
+        }
+    }
+
     /// <summary>Creates a completed dictation record.</summary>
     public static Recording ForDictation(string transcription, double durationSeconds,
         DateTimeOffset? timestamp = null)

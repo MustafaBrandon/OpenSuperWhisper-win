@@ -108,6 +108,41 @@ public sealed class RecordingStore : IDisposable
         });
     }
 
+    /// <summary>
+    /// Replaces the transcript of an existing recording, leaving its audio untouched.
+    /// </summary>
+    /// <remarks>
+    /// Used when the user re-transcribes an entry with a different model or language.
+    /// The row keeps its id and timestamp: this is the same recording heard again, not
+    /// a new one, and adding a second row would make history read as if they had
+    /// dictated twice.
+    /// </remarks>
+    /// <returns>False when no such recording exists.</returns>
+    public bool UpdateTranscription(Guid id, string transcription)
+    {
+        ArgumentNullException.ThrowIfNull(transcription);
+
+        var updated = 0;
+
+        Execute(connection =>
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE recording
+                SET transcription = $transcription, status = $status, progress = 1.0
+                WHERE id = $id;
+                """;
+
+            command.Parameters.AddWithValue("$id", id.ToString());
+            command.Parameters.AddWithValue("$transcription", transcription);
+            command.Parameters.AddWithValue("$status", nameof(RecordingStatus.Completed));
+
+            updated = command.ExecuteNonQuery();
+        });
+
+        return updated > 0;
+    }
+
     /// <summary>All recordings, newest first.</summary>
     public IReadOnlyList<Recording> All(int limit = 500)
     {

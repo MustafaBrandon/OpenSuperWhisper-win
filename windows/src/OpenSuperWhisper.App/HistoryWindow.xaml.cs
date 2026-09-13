@@ -49,7 +49,9 @@ public partial class HistoryWindow : Window
             string.IsNullOrWhiteSpace(r.Transcription) ? "(no text)" : r.Transcription,
             $"{r.Timestamp.LocalDateTime:g}  ·  {FormatDuration(r.DurationSeconds)}"
                 + (r.Status == RecordingStatus.Completed ? string.Empty : $"  ·  {r.Status}"),
-            File.Exists(r.AudioPath))).ToList();
+            // Imported files were never copied into the library, so their audio is
+            // wherever the user left it — playable and re-readable from there.
+            r.PlayablePath is not null)).ToList();
 
         var count = recordings.Count;
         CountText.Text = count == 1 ? "1 recording" : $"{count} recordings";
@@ -96,13 +98,13 @@ public partial class HistoryWindow : Window
     {
         if (IdOf(sender) is not { } id) return;
         if (_store.Find(id) is not { } recording) return;
-        if (!File.Exists(recording.AudioPath)) return;
+        if (recording.PlayablePath is not { } audio) return;
 
         StopPlayback();
 
         try
         {
-            _playerReader = new AudioFileReader(recording.AudioPath);
+            _playerReader = new AudioFileReader(audio);
             _player = new WaveOutEvent();
             _player.Init(_playerReader);
 
@@ -125,6 +127,73 @@ public partial class HistoryWindow : Window
 
         _playerReader?.Dispose();
         _playerReader = null;
+    }
+
+    /// <summary>
+    /// Transcribes a stored recording again with today's model and language.
+    /// </summary>
+    /// <remarks>
+    /// The reason this exists: the bundled Tiny model is what a new install dictates
+    /// with, and after downloading a real one there is no other way to recover the
+    /// transcripts it got wrong — the audio is still there, so the work is not lost,
+    /// it is just one button away.
+    /// <para>
+    /// An empty result does not overwrite. Whisper returning nothing means "I heard no
+    /// speech", and trading a transcript the user already has for that is destroying
+    /// data on the strength of a worse answer.
+    /// </para>
+    /// </remarks>
+    private async void OnRetranscribeOne(object sender, RoutedEventArgs e)
+    {
+        if (IdOf(sender) is not { } id) return;
+        if (_store.Find(id) is not { } recording) return;
+
+        if (recording.PlayablePath is not { } audio)
+        {
+            MessageBox.Show(
+                "The audio for this recording is no longer on disk, so it cannot be transcribed again.",
+                "Audio missing", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Playback holds the file open, and the decoder needs to read it.
+        StopPlayback();
+
+        var button = sender as Button;
+        if (button is not null) button.IsEnabled = false;
+
+        var previousCount = CountText.Text;
+        CountText.Text = $"Transcribing {Path.GetFileName(audio)}…";
+
+        try
+        {
+            var text = await _transcribeFile(audio);
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                Log.Write($"re-transcription of {recording.Id} produced no speech; keeping the existing transcript");
+                CountText.Text = previousCount;
+
+                MessageBox.Show(
+                    "No speech was found this time, so the existing transcript has been kept.",
+                    "Nothing to change", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            _store.UpdateTranscription(recording.Id, text);
+            Log.Write($"re-transcribed {recording.Id}");
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"could not re-transcribe {recording.Id}", ex);
+            MessageBox.Show($"Could not transcribe this recording again.\n\n{ex.Message}",
+                "Transcription failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            // Rebuilds the row, which replaces the button this handler disabled.
+            Refresh();
+        }
     }
 
     private void OnDeleteOne(object sender, RoutedEventArgs e)

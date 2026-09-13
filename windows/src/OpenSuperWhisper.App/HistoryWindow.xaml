@@ -68,6 +68,10 @@
                                 <Button Content="Play" Width="52" Height="26" Margin="0,0,6,0"
                                         Click="OnPlayOne" Tag="{Binding Id}"
                                         IsEnabled="{Binding HasAudio}" />
+                                <Button Content="Redo" Width="56" Height="26" Margin="0,0,6,0"
+                                        Click="OnRetranscribeOne" Tag="{Binding Id}"
+                                        IsEnabled="{Binding HasAudio}"
+                                        ToolTip="Transcribe this audio again with the current model and language" />
                                 <Button Content="Delete" Width="62" Height="26"
                                         Click="OnDeleteOne" Tag="{Binding Id}" />
                             </StackPanel>

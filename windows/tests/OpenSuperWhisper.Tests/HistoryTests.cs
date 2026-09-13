@@ -67,6 +67,48 @@ public class RecordingStoreTests : IDisposable
     }
 
     [Fact]
+    public void UpdateTranscription_ReplacesTheTextInPlace()
+    {
+        // Re-transcribing is the same recording heard again, not a new one. A second
+        // row would make history read as if the user had dictated twice.
+        var when = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000);
+        var recording = Make("teh quick brown fox", when);
+        _store.Add(recording);
+
+        Assert.True(_store.UpdateTranscription(recording.Id, "the quick brown fox"));
+
+        var loaded = _store.Find(recording.Id);
+        Assert.Equal("the quick brown fox", loaded!.Transcription);
+        Assert.Equal(recording.Id, loaded.Id);
+        Assert.Equal(when.ToUnixTimeSeconds(), loaded.Timestamp.ToUnixTimeSeconds());
+        Assert.Equal(recording.FileName, loaded.FileName);
+        Assert.Equal(1, _store.Count());
+    }
+
+    [Fact]
+    public void UpdateTranscription_ClearsAFailedStatus()
+    {
+        // A failed row carries its error message in the transcript field. Succeeding on
+        // a retry has to clear both, or history shows the new text under the old
+        // failure.
+        var recording = Make("Transcription failed: model not found", DateTimeOffset.Now)
+            with { Status = RecordingStatus.Failed, Progress = 0.0 };
+
+        _store.Add(recording);
+        _store.UpdateTranscription(recording.Id, "recovered text");
+
+        var loaded = _store.Find(recording.Id);
+        Assert.Equal(RecordingStatus.Completed, loaded!.Status);
+        Assert.Equal(1.0, loaded.Progress, 3);
+    }
+
+    [Fact]
+    public void UpdateTranscription_OnAMissingRecording_ReportsFailure()
+    {
+        Assert.False(_store.UpdateTranscription(Guid.NewGuid(), "nothing to update"));
+    }
+
+    [Fact]
     public void NullSourcePath_StaysNull()
     {
         // Null means "this was a dictation", which drives whether audio is moved or
@@ -234,6 +276,67 @@ public class RetentionPolicyTests
     public void BlankPath_IsNotDeletable(string path)
     {
         Assert.False(RetentionPolicy.IsDeletablePath(path, Path.GetTempPath()));
+    }
+}
+
+/// <summary>
+/// Which audio file a history entry can still be played or re-transcribed from.
+/// </summary>
+/// <remarks>
+/// The distinction is not cosmetic: a dictation's audio was moved into the library and
+/// is ours, while an imported file was only ever referenced and stays wherever the user
+/// put it. Both are readable; only one is somewhere the app controls.
+/// </remarks>
+public class PlayablePathTests : IDisposable
+{
+    private readonly string _dir = Path.Combine(
+        Path.GetTempPath(), "osw-playable-tests", Guid.NewGuid().ToString("N"));
+
+    public PlayablePathTests() => Directory.CreateDirectory(_dir);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(_dir, recursive: true); } catch (IOException) { }
+        GC.SuppressFinalize(this);
+    }
+
+    private static Recording Imported(string source) => new()
+    {
+        Id = Guid.NewGuid(),
+        Timestamp = DateTimeOffset.Now,
+        FileName = Path.GetFileName(source),
+        Transcription = "imported",
+        SourceFilePath = source,
+    };
+
+    [Fact]
+    public void ImportedFile_ResolvesToWhereTheUserLeftIt()
+    {
+        // Its audio was never copied into the library, so without this fallback an
+        // imported entry could never be played back or transcribed again.
+        var source = Path.Combine(_dir, "input.wav");
+        File.WriteAllBytes(source, [0x52, 0x49, 0x46, 0x46]);
+
+        Assert.Equal(source, Imported(source).PlayablePath);
+    }
+
+    [Fact]
+    public void MovedOrDeletedSource_ResolvesToNothing()
+    {
+        // The app cannot promise a file it does not own still exists. Saying so is the
+        // difference between a disabled button and a failure dialog.
+        Assert.Null(Imported(Path.Combine(_dir, "never-existed.wav")).PlayablePath);
+    }
+
+    [Fact]
+    public void DictationWithNoStoredAudio_ResolvesToNothing()
+    {
+        // A 1970 timestamp so the derived filename cannot collide with a real recording
+        // in the developer's own library — AudioPath points at the live directory.
+        var recording = Recording.ForDictation("spoken", 2.0, DateTimeOffset.FromUnixTimeSeconds(1));
+
+        Assert.Null(recording.SourceFilePath);
+        Assert.Null(recording.PlayablePath);
     }
 }
 
