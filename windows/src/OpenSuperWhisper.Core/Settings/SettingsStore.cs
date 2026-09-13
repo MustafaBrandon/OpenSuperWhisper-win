@@ -54,7 +54,7 @@ public sealed class SettingsStore
             // change, and a throwing edit leaves the previous settings intact.
             updated = _current.Clone();
             edit(updated);
-            _current = updated;
+            _current = updated.Normalize();
         }
 
         Save(updated);
@@ -65,6 +65,8 @@ public sealed class SettingsStore
     public void Replace(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
+
+        settings.Normalize();
 
         lock (_gate) _current = settings.Clone();
 
@@ -82,8 +84,10 @@ public sealed class SettingsStore
             var loaded = JsonSerializer.Deserialize(json, SettingsJsonContext.Default.AppSettings);
 
             // A file that parses to null is corrupt in a way that would otherwise
-            // surface as a NullReferenceException much later.
-            return loaded ?? new AppSettings();
+            // surface as a NullReferenceException much later. Anything that did parse
+            // is still hand-editable, so it goes through the same clamping a dialog
+            // edit would.
+            return loaded?.Normalize() ?? new AppSettings();
         }
         catch (Exception ex)
         {

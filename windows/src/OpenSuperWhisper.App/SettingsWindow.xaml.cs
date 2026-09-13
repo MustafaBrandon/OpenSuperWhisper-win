@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -90,11 +91,20 @@ public partial class SettingsWindow : Window
         TrailingSpaceCheck.IsChecked = _draft.AddSpaceAfterSentence;
 
         BeamSearchCheck.IsChecked = _draft.UseBeamSearch;
+        BeamSizeBox.Text = _draft.BeamSize.ToString();
+        UpdateBeamSizeEnabled();
+
         InitialPromptBox.Text = _draft.InitialPrompt;
-        AsianAutocorrectCheck.IsChecked = _draft.UseAsianAutocorrect;
         TimestampsCheck.IsChecked = _draft.ShowTimestamps;
+        SuppressBlankCheck.IsChecked = _draft.SuppressBlankAudio;
+
+        // Invariant formatting, matching the JSON the settings file stores. A German
+        // locale would otherwise render 0.6 as "0,6", which then fails to parse back.
+        TemperatureBox.Text = _draft.Temperature.ToString(CultureInfo.InvariantCulture);
+        NoSpeechBox.Text = _draft.NoSpeechThreshold.ToString(CultureInfo.InvariantCulture);
 
         StartHiddenCheck.IsChecked = _draft.StartHiddenInTray;
+        DebugModeCheck.IsChecked = _draft.DebugMode;
         SaveHistoryCheck.IsChecked = _draft.SaveTranscriptionHistory;
         AutoDeleteCheck.IsChecked = _draft.AutoDeleteRecordingsEnabled;
         RetentionDaysBox.Text = _draft.AutoDeleteRecordingsAfterDays.ToString();
@@ -499,10 +509,18 @@ public partial class SettingsWindow : Window
 
         _draft.UseBeamSearch = BeamSearchCheck.IsChecked == true;
         _draft.InitialPrompt = InitialPromptBox.Text;
-        _draft.UseAsianAutocorrect = AsianAutocorrectCheck.IsChecked == true;
         _draft.ShowTimestamps = TimestampsCheck.IsChecked == true;
+        _draft.SuppressBlankAudio = SuppressBlankCheck.IsChecked == true;
+
+        // Unparseable numbers keep the value the draft already had rather than
+        // resetting to a default — a typo in one box should not silently undo a
+        // deliberate setting. AppSettings.Normalize clamps whatever survives.
+        _draft.BeamSize = ParseOr(BeamSizeBox.Text, _draft.BeamSize);
+        _draft.Temperature = ParseOr(TemperatureBox.Text, _draft.Temperature);
+        _draft.NoSpeechThreshold = ParseOr(NoSpeechBox.Text, _draft.NoSpeechThreshold);
 
         _draft.StartHiddenInTray = StartHiddenCheck.IsChecked == true;
+        _draft.DebugMode = DebugModeCheck.IsChecked == true;
         _draft.SaveTranscriptionHistory = SaveHistoryCheck.IsChecked == true;
         _draft.AutoDeleteRecordingsEnabled = AutoDeleteCheck.IsChecked == true;
 
@@ -514,6 +532,26 @@ public partial class SettingsWindow : Window
 
         _store.Replace(_draft);
         Close();
+    }
+
+    private static int ParseOr(string text, int fallback) =>
+        int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : fallback;
+
+    private static double ParseOr(string text, double fallback) =>
+        double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value)
+            ? value
+            : fallback;
+
+    /// <summary>Beam count only means something while beam search is on.</summary>
+    private void OnBeamSearchToggled(object sender, RoutedEventArgs e) => UpdateBeamSizeEnabled();
+
+    private void UpdateBeamSizeEnabled()
+    {
+        var enabled = BeamSearchCheck.IsChecked == true;
+        BeamSizeBox.IsEnabled = enabled;
+        BeamSizeLabel.Opacity = enabled ? 1.0 : 0.5;
     }
 
     private void OnCancel(object sender, RoutedEventArgs e) => Close();

@@ -19,6 +19,17 @@ public static class Log
     public static string? Path => _path;
 
     /// <summary>
+    /// Whether <see cref="Detail"/> writes anything. Driven by the <c>debugMode</c>
+    /// preference.
+    /// </summary>
+    /// <remarks>
+    /// Off by default because the detailed lines are per-dictation and would bury the
+    /// handful of lines that matter when something is actually broken. On, the log
+    /// answers "what settings was it using and what did it hear" without a debugger.
+    /// </remarks>
+    public static bool Verbose { get; set; }
+
+    /// <summary>
     /// Begins a fresh log for this run.
     /// </summary>
     /// <param name="directory">Where to write.</param>
@@ -67,6 +78,20 @@ public static class Log
                 // Losing a log line must never take the app down with it.
             }
         }
+    }
+
+    /// <summary>Writes only when <see cref="Verbose"/> is on.</summary>
+    /// <remarks>
+    /// Takes the message as a factory so the string is never built when verbose logging
+    /// is off — these sit on the dictation path, and the cheapest version of a line
+    /// nobody will read is one that was never formatted.
+    /// </remarks>
+    public static void Detail(Func<string> message)
+    {
+        if (!Verbose) return;
+
+        ArgumentNullException.ThrowIfNull(message);
+        Write(message());
     }
 
     public static void Error(string message, Exception ex) =>

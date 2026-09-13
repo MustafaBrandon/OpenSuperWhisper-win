@@ -78,6 +78,8 @@ public sealed class DictationController : IDisposable
         var previous = _settings;
         _settings = settings;
 
+        Log.Verbose = settings.DebugMode;
+
         _triggers.HoldToRecord = settings.HoldToRecord;
         _triggers.DoublePressToTrigger = settings.DoublePressToTrigger;
 
@@ -96,6 +98,16 @@ public sealed class DictationController : IDisposable
         Log.Write($"settings applied: trigger={settings.ModifierOnlyHotkey}/{settings.MouseButtonHotkey}, "
                 + $"hold={settings.HoldToRecord}, paste={settings.AutoPasteTranscription}, "
                 + $"language={settings.WhisperLanguage}");
+
+        Log.Detail(() =>
+            $"  decoding: beam={settings.UseBeamSearch}/{settings.BeamSize}, "
+            + $"temperature={settings.Temperature}, noSpeech={settings.NoSpeechThreshold}, "
+            + $"suppressBlank={settings.SuppressBlankAudio}, timestamps={settings.ShowTimestamps}, "
+            + $"prompt={(settings.InitialPrompt.Length == 0 ? "(none)" : $"{settings.InitialPrompt.Length} chars")}"
+            + $"; output: copy={settings.AutoCopyToClipboard}, unicode={settings.UseUnicodeTyping}, "
+            + $"trailingSpace={settings.AddSpaceAfterSentence}"
+            + $"; history={settings.SaveTranscriptionHistory}, doubleTap={settings.DoublePressToTrigger}, "
+            + $"escNoConfirm={settings.EscCancelWithoutConfirmation}, sound={settings.PlaySoundOnRecordStart}");
     }
 
     /// <summary>Binds the trigger, with mouse button taking precedence over modifier.</summary>
@@ -200,6 +212,7 @@ public sealed class DictationController : IDisposable
         try
         {
             _recorder.Start(device.Value);
+            PlayStartSound();
         }
         catch (Exception ex)
         {
@@ -229,6 +242,35 @@ public sealed class DictationController : IDisposable
                       $"(visible={_indicator.IsVisible} {_indicator.Left:F0},{_indicator.Top:F0} " +
                       $"{_indicator.ActualWidth:F0}x{_indicator.ActualHeight:F0})");
         });
+    }
+
+    /// <summary>
+    /// Confirms the microphone is live, when the user asked for a sound.
+    /// </summary>
+    /// <remarks>
+    /// Played after capture starts, not before: the point of the sound is "I am
+    /// recording now", and sounding it ahead of a device that then fails to open would
+    /// be a lie at exactly the moment the user is deciding whether to start talking.
+    /// <para>
+    /// A system sound rather than a bundled asset. It plays asynchronously — so it
+    /// costs the trigger path nothing — and it respects the user's sound scheme,
+    /// including having muted it, which a raw waveform would not.
+    /// </para>
+    /// </remarks>
+    private void PlayStartSound()
+    {
+        if (!_settings.PlaySoundOnRecordStart) return;
+
+        try
+        {
+            System.Media.SystemSounds.Asterisk.Play();
+        }
+        catch (Exception ex)
+        {
+            // No audio endpoint, or a sound scheme that cannot be read. Never worth
+            // failing a dictation over.
+            Log.Error("could not play the start sound", ex);
+        }
     }
 
     private void OnStopRequested()
@@ -264,8 +306,19 @@ public sealed class DictationController : IDisposable
 
             try
             {
+                var started = System.Diagnostics.Stopwatch.StartNew();
+
                 var samples = AudioDecoder.DecodeToWhisperFormat(wav);
+                var audioSeconds = samples.Length / (double)AudioDecoder.WhisperSampleRate;
+                var decoded = started.Elapsed;
+
                 var text = _engine.Transcribe(samples, Transcription);
+
+                Log.Detail(() =>
+                    $"  audio {audioSeconds:F2}s ({samples.Length} samples), "
+                    + $"decode {decoded.TotalMilliseconds:F0}ms, "
+                    + $"transcribe {(started.Elapsed - decoded).TotalMilliseconds:F0}ms "
+                    + $"({audioSeconds / Math.Max(0.001, (started.Elapsed - decoded).TotalSeconds):F1}x realtime)");
 
                 if (string.IsNullOrEmpty(text))
                 {

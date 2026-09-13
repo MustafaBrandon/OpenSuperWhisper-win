@@ -170,9 +170,20 @@
                         <TextBlock Text="Decoding" Style="{StaticResource SectionHeading}" />
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <CheckBox x:Name="BeamSearchCheck" Content="Use beam search" />
+                                <CheckBox x:Name="BeamSearchCheck" Content="Use beam search"
+                                          Checked="OnBeamSearchToggled" Unchecked="OnBeamSearchToggled" />
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="Slower, occasionally more accurate on difficult audio." />
+
+                                <Grid Margin="24,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="BeamSizeLabel" Text="Beams"
+                                               Style="{StaticResource FieldLabel}" />
+                                    <TextBox x:Name="BeamSizeBox" Grid.Column="1" Width="60" Height="24" />
+                                </Grid>
 
                                 <TextBlock Text="Vocabulary hint" Margin="0,8,0,4" />
                                 <TextBox x:Name="InitialPromptBox" Height="60" AcceptsReturn="True"
@@ -180,11 +191,31 @@
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="Names, jargon or spellings you use often. Helps the model get them right." />
 
-                                <CheckBox x:Name="AsianAutocorrectCheck"
-                                          Content="Asian text autocorrect (spacing for Chinese, Japanese, Korean)" />
                                 <CheckBox x:Name="TimestampsCheck" Content="Include timestamps in the transcript" />
                                 <TextBlock Style="{StaticResource Hint}"
                                            Text="Disables silence trimming, since trimming would make the timestamps wrong." />
+
+                                <CheckBox x:Name="SuppressBlankCheck"
+                                          Content="Drop [BLANK_AUDIO] and [MUSIC] markers" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Whisper emits these for non-speech. Off, they appear in the transcript and get pasted with it." />
+
+                                <Grid Margin="0,4,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="Temperature" Style="{StaticResource FieldLabel}" />
+                                    <TextBox x:Name="TemperatureBox" Grid.Column="1" Width="60" Height="24"
+                                             Margin="0,0,20,0" />
+                                    <TextBlock Grid.Column="2" Text="No-speech threshold"
+                                               Style="{StaticResource FieldLabel}" />
+                                    <TextBox x:Name="NoSpeechBox" Grid.Column="3" Width="60" Height="24" />
+                                </Grid>
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Both 0 to 1. Temperature 0 makes decoding deterministic; raising it lets whisper retry difficult audio differently. The threshold is how confident it must be that a segment is silence before discarding it." />
                             </StackPanel>
                         </Border>
 
@@ -221,6 +252,9 @@
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
                                 <CheckBox x:Name="StartHiddenCheck" Content="Start hidden in the notification area" />
+                                <CheckBox x:Name="DebugModeCheck" Content="Write detailed diagnostics to the log" />
+                                <TextBlock Style="{StaticResource Hint}"
+                                           Text="Records the settings, audio and timings behind every dictation. Useful when reporting a problem; noisy otherwise." />
                             </StackPanel>
                         </Border>
 

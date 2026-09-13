@@ -42,6 +42,16 @@ public sealed class AppSettings
 
     public int BeamSize { get; set; } = 5;
 
+    /// <summary>
+    /// Reserved. The Rust autocorrect library is built but not yet called, so this
+    /// value is carried and never read.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately absent from the settings UI: a checkbox for a feature that does
+    /// nothing is worse than no checkbox, because it makes the feature look broken
+    /// rather than unbuilt. The key stays so a settings file survives the round trip
+    /// and so the mac comparison in §6 of the plan still lines up.
+    /// </remarks>
     public bool UseAsianAutocorrect { get; set; } = true;
 
     // ---- Trigger ----
@@ -111,6 +121,36 @@ public sealed class AppSettings
 
     /// <summary>Deep copy, so edits in a settings dialog can be discarded.</summary>
     public AppSettings Clone() => (AppSettings)MemberwiseClone();
+
+    /// <summary>
+    /// Clamps the numeric decoding values into ranges whisper can actually use.
+    /// </summary>
+    /// <remarks>
+    /// The settings file is meant to be edited by hand, so these values arrive
+    /// unvalidated. A negative temperature or a beam size of zero does not fail
+    /// loudly — it produces silently worse transcripts, which is the hardest kind of
+    /// bug to attribute. Clamping rather than rejecting keeps one bad number from
+    /// discarding every other preference in the file.
+    /// <para>
+    /// Retention days are deliberately not clamped: a non-positive value is the
+    /// documented way to disable retention at the policy level, and rounding it up to
+    /// one day would start deleting recordings nobody asked to delete.
+    /// </para>
+    /// </remarks>
+    public AppSettings Normalize()
+    {
+        // Above 1.0 whisper's sampling is noise; below 0 it is meaningless.
+        Temperature = Math.Clamp(Temperature, 0.0, 1.0);
+
+        // A probability. At 0 every segment counts as speech, at 1 none does.
+        NoSpeechThreshold = Math.Clamp(NoSpeechThreshold, 0.0, 1.0);
+
+        // 1 is greedy decoding by another name; past 10 the cost grows and the
+        // transcript does not improve.
+        BeamSize = Math.Clamp(BeamSize, 1, 10);
+
+        return this;
+    }
 }
 
 [JsonSourceGenerationOptions(

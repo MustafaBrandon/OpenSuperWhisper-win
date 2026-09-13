@@ -1,3 +1,4 @@
+using OpenSuperWhisper.Core.History;
 using OpenSuperWhisper.Core.Models;
 using OpenSuperWhisper.Core.Settings;
 using Xunit;
@@ -50,6 +51,57 @@ public class AppSettingsTests
         Assert.Equal("RightControl", s.ModifierOnlyHotkey);
         Assert.Equal("RightControl", s.LastModifierOnlyHotkey);
         Assert.Equal("None", s.MouseButtonHotkey);
+    }
+
+    [Theory]
+    [InlineData(-1.0, 0.0)]
+    [InlineData(0.0, 0.0)]
+    [InlineData(0.4, 0.4)]
+    [InlineData(1.0, 1.0)]
+    [InlineData(9.5, 1.0)]
+    public void Normalize_ClampsTemperature(double given, double expected)
+    {
+        // The settings file is hand-editable, and an out-of-range temperature does not
+        // fail loudly — it quietly produces worse transcripts.
+        var s = new AppSettings { Temperature = given };
+
+        Assert.Equal(expected, s.Normalize().Temperature);
+    }
+
+    [Theory]
+    [InlineData(-0.5, 0.0)]
+    [InlineData(0.6, 0.6)]
+    [InlineData(2.0, 1.0)]
+    public void Normalize_ClampsNoSpeechThreshold(double given, double expected)
+    {
+        var s = new AppSettings { NoSpeechThreshold = given };
+
+        Assert.Equal(expected, s.Normalize().NoSpeechThreshold);
+    }
+
+    [Theory]
+    [InlineData(0, 1)]
+    [InlineData(-4, 1)]
+    [InlineData(5, 5)]
+    [InlineData(64, 10)]
+    public void Normalize_ClampsBeamSize(int given, int expected)
+    {
+        // Zero beams is not a slower search, it is no search at all.
+        var s = new AppSettings { BeamSize = given };
+
+        Assert.Equal(expected, s.Normalize().BeamSize);
+    }
+
+    [Fact]
+    public void Normalize_LeavesRetentionDaysAlone()
+    {
+        // Non-positive days is the documented way to disable retention in
+        // RetentionPolicy. Clamping it up to one day would start deleting recordings
+        // nobody asked to delete.
+        var s = new AppSettings { AutoDeleteRecordingsAfterDays = 0 };
+
+        Assert.Equal(0, s.Normalize().AutoDeleteRecordingsAfterDays);
+        Assert.Null(RetentionPolicy.CutoffDate(s.AutoDeleteRecordingsAfterDays, DateTimeOffset.Now));
     }
 
     [Fact]
