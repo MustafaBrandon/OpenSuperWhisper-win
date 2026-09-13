@@ -57,7 +57,7 @@ public partial class App : Application
         }
 
         var bundled = _models!.PathFor(ModelCatalog.BundledModelFilename);
-        return File.Exists(bundled) ? bundled : Meta("BundledModelPath");
+        return File.Exists(bundled) ? bundled : BundledModelPath;
     }
 
     protected override void OnStartup(StartupEventArgs e)
@@ -180,10 +180,10 @@ public partial class App : Application
         // every launch, not just the first: a user who clears that directory would
         // otherwise be left with an app that cannot transcribe at all.
         _models = new ModelManager();
-        _models.EnsureBundledModelPresent(Meta("BundledModelPath"));
+        _models.EnsureBundledModelPresent(BundledModelPath);
 
         var modelPath = ResolveModelPath();
-        var vadPath = Meta("VadModelPath");
+        var vadPath = AppPaths.ResolveShippedFile(VadModelFilename, Meta("VadModelPath"));
         Log.Write($"model: {modelPath} (exists: {File.Exists(modelPath)})");
         Log.Write($"vad:   {vadPath} (exists: {File.Exists(vadPath)})");
 
@@ -708,6 +708,19 @@ public partial class App : Application
 
         base.OnExit(e);
     }
+
+    /// <summary>
+    /// The bundled whisper model: the copy installed beside the executable, or the
+    /// repository copy in a dev build.
+    /// </summary>
+    private static string BundledModelPath =>
+        AppPaths.ResolveShippedFile(ModelCatalog.BundledModelFilename, Meta("BundledModelPath"));
+
+    /// <summary>
+    /// Silero VAD, which every model needs — it is what stops silence producing
+    /// hallucinated text, so it ships with the app rather than being downloadable.
+    /// </summary>
+    private const string VadModelFilename = "ggml-silero-v5.1.2.bin";
 
     private static string Meta(string key) =>
         typeof(App).Assembly

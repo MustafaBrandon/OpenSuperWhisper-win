@@ -37,4 +37,44 @@ public static class AppPaths
         Directory.CreateDirectory(Recordings);
         Directory.CreateDirectory(TempRecordings);
     }
+
+    /// <summary>The directory the running executable lives in.</summary>
+    public static string InstallDirectory { get; } =
+        Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
+
+    /// <summary>
+    /// Finds a file that ships with the app — a model, a glyph, anything installed
+    /// alongside the executable.
+    /// </summary>
+    /// <param name="fileName">
+    /// Name of the shipped copy, looked for next to the executable first.
+    /// </param>
+    /// <param name="buildTimePath">
+    /// Absolute path recorded at build time, used when there is no shipped copy.
+    /// </param>
+    /// <remarks>
+    /// The order is what makes a build both developable and installable from the same
+    /// source. In a dev build nothing is copied next to the executable and the
+    /// build-time path points into the repository, which is why it has worked so far.
+    /// On an installed machine that path names a directory that does not exist — it is
+    /// the developer's checkout — so the shipped copy has to win, and has to be looked
+    /// for first rather than as a fallback.
+    /// </remarks>
+    /// <returns>The first path that exists, or <paramref name="buildTimePath"/>.</returns>
+    public static string ResolveShippedFile(string fileName, string? buildTimePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
+
+        var shipped = Path.Combine(InstallDirectory, fileName);
+        if (File.Exists(shipped)) return shipped;
+
+        if (!string.IsNullOrWhiteSpace(buildTimePath) && File.Exists(buildTimePath))
+        {
+            return buildTimePath;
+        }
+
+        // Neither exists. Return the shipped location rather than the developer's, so
+        // the error names the file the user is actually missing.
+        return shipped;
+    }
 }

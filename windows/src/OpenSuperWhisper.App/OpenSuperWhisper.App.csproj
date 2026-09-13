@@ -13,6 +13,16 @@
       subtree split carries it.
     -->
     <ApplicationIcon>..\..\assets\app.ico</ApplicationIcon>
+
+    <!--
+      A self-contained publish otherwise carries WPF's framework resources translated
+      into fourteen languages - around 130 files and 40 MB - to localise exception
+      text the user never sees. The app's own UI is English only.
+
+      This is not trimming: no code is removed and nothing is reached by reflection,
+      so it cannot produce the class of failure the plan warns about.
+    -->
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
   </PropertyGroup>
 
   <ItemGroup>
@@ -44,6 +54,22 @@
   <ItemGroup>
     <AssemblyMetadata Include="BundledModelPath" Value="$(BundledModelPath)" />
     <AssemblyMetadata Include="VadModelPath" Value="$(VadModelPath)" />
+  </ItemGroup>
+
+  <!--
+    Model files are copied on PUBLISH only, never on build. They are 77 MB and 1 MB,
+    and a dev build reads them straight from the repository through the assembly
+    metadata above — copying them into every bin\ would cost a lot for nothing.
+
+    A published app cannot do that: the recorded path is the developer's checkout and
+    does not exist on the target machine, so the installed copy has to sit next to the
+    executable. AppPaths.ResolveShippedFile looks there first for exactly this reason.
+  -->
+  <ItemGroup>
+    <None Include="$(BundledModelPath)" CopyToPublishDirectory="PreserveNewest"
+          Link="ggml-tiny.en.bin" Visible="false" />
+    <None Include="$(VadModelPath)" CopyToPublishDirectory="PreserveNewest"
+          Link="ggml-silero-v5.1.2.bin" Visible="false" />
   </ItemGroup>
 
 </Project>
